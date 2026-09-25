@@ -47,4 +47,9 @@ if ($uri === '/retificadora_toggle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     return true;
 }
 
+if ($uri === '/cenario_aplicar' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    require __DIR__ . '/api/cenario_aplicar.php';
+    return true;
+}
+
 return false; // servidor embutido serve os estáticos de /public

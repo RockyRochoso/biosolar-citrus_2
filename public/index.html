@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Painel de automação hidro-energética para pomares de citros — monitoramento em tempo real de irrigação, reservatório, condições climáticas e suficiência energética de retificadoras.">
-  <title>BioSolar Citrus | Automação & Suficiência Energética</title>
+  <title>BioSolar Citrus | Automação, ESG & Suficiência Energética</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -21,7 +21,7 @@
       <span class="brand-icon">🍊</span>
       <div>
         <h1>BioSolar Citrus</h1>
-        <p class="brand-sub">Automação Hidro-Energética & NOC de Suficiência Solar</p>
+        <p class="brand-sub">Automação Hidro-Energética & NOC Solar</p>
       </div>
     </div>
 
@@ -38,6 +38,12 @@
     </nav>
 
     <div class="topbar-right">
+      <button id="btn-cenarios" class="btn-demo-cenarios" title="Simular cenários de teste rápido para a banca">
+        🧪 Cenários Demo
+      </button>
+      <button id="btn-relatorio" class="btn-relatorio" title="Exportar relatório de auditoria técnica">
+        📄 Relatório
+      </button>
       <button id="btn-reset" class="btn-reset" title="Reiniciar simulação">↻ Reset</button>
       <div id="conn-status" class="conn-status">
         <span class="conn-dot"></span>
@@ -50,7 +56,7 @@
   <!-- ═══ Emergency Banner ═══ -->
   <div id="emergency-banner" class="banner hidden">
     <span class="banner-pulse"></span>
-    ⚠ BLOQUEIO DE EMERGÊNCIA ATIVO — reservatório abaixo do limite crítico. Todas as bombas foram desligadas.
+    ⚠ BLOQUEIO DE EMERGÊNCIA ATIVO — reservatório abaixo do limite crítico (&lt;15%). Todas as bombas foram desligadas e o acionamento manual está bloqueado (HTTP 423).
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════
@@ -58,7 +64,7 @@
        ═══════════════════════════════════════════════════════════ -->
   <div id="view-pomar" class="view-section active">
 
-    <!-- KPI Strip -->
+    <!-- KPI Strip with ESG & Financial Metrics -->
     <section class="kpi-strip" id="kpi-strip">
       <div class="kpi">
         <div class="kpi-icon">💧</div>
@@ -74,18 +80,32 @@
           <span class="kpi-label">kWh Consumidos</span>
         </div>
       </div>
-      <div class="kpi">
-        <div class="kpi-icon">🌱</div>
+      <div class="kpi" title="Água poupada vs irrigação convencional contínua">
+        <div class="kpi-icon">💦</div>
         <div class="kpi-body">
-          <span class="kpi-value" id="kpi-economia">0%</span>
-          <span class="kpi-label">Economia Estimada</span>
+          <span class="kpi-value" id="kpi-agua">0 L</span>
+          <span class="kpi-label">Água Poupada</span>
+        </div>
+      </div>
+      <div class="kpi" title="Economia financeira estimada em energia e insumos">
+        <div class="kpi-icon">💵</div>
+        <div class="kpi-body">
+          <span class="kpi-value" id="kpi-reais">R$ 0,00</span>
+          <span class="kpi-label">Economia R$</span>
+        </div>
+      </div>
+      <div class="kpi" title="Redução da pegada de carbono com energia solar">
+        <div class="kpi-icon">🍃</div>
+        <div class="kpi-body">
+          <span class="kpi-value" id="kpi-co2">0.00 kg</span>
+          <span class="kpi-label">CO₂ Evitado</span>
         </div>
       </div>
       <div class="kpi">
         <div class="kpi-icon">🕐</div>
         <div class="kpi-body">
           <span class="kpi-value" id="kpi-uptime">00:00</span>
-          <span class="kpi-label">Uptime do Sistema</span>
+          <span class="kpi-label">Uptime</span>
         </div>
       </div>
     </section>
@@ -114,7 +134,7 @@
             </svg>
           </div>
           <canvas id="reservoir-sparkline" class="sparkline-canvas" width="240" height="48"></canvas>
-          <p class="hint">Crítico &lt; 15% · Alerta &lt; 40%</p>
+          <p class="hint">Crítico &lt; 15% (Bloqueio) · Desbloqueio &ge; 20%</p>
         </section>
 
         <!-- Weather Panel -->
@@ -155,7 +175,7 @@
         <div class="section-header">
           <div>
             <h2>Talhões & Irrigação</h2>
-            <p class="section-subtitle">Monitoramento de umidade NDVI, controle individual de aspersores e imagens de satélite</p>
+            <p class="section-subtitle">Umidade NDVI em tempo real, aspersores autônomos e imagens de satélite</p>
           </div>
           <button id="btn-add-talhao" class="btn-action">+ Adicionar Talhão</button>
         </div>
@@ -165,7 +185,7 @@
         <!-- Event Log -->
         <section class="card glass log-card">
           <div class="log-header">
-            <h2>📋 Log de Eventos da Fazenda</h2>
+            <h2>📋 Log de Auditoria & Eventos da Fazenda</h2>
             <span class="log-badge" id="log-count">0 eventos</span>
           </div>
           <div id="event-log" class="event-log">
@@ -398,8 +418,8 @@
 
   <!-- ═══ Footer ═══ -->
   <footer class="footer">
-    <p>Telemetria e controle transmitidos em tempo real via <code>BioSolar REST API</code>. Nenhuma persistência local.</p>
-    <p class="footer-sub">BioSolar Citrus — V JTI · Automação Hidro-Energética Industrial</p>
+    <p>Telemetria e controle transmitidos em tempo real via <code>BioSolar REST API</code>. Nenhuma persistência local no cliente.</p>
+    <p class="footer-sub">BioSolar Citrus — V JTI · Caderno de Desafio 03 · Automação Hidro-Energética Industrial</p>
   </footer>
 
   <!-- ═══════════════════════════════════════════════════════════
@@ -407,6 +427,76 @@
        ═══════════════════════════════════════════════════════════ -->
   <div id="modal-overlay" class="modal-overlay hidden"></div>
   
+  <!-- Modal Cenários Demo -->
+  <div id="modal-cenarios" class="modal glass modal-lg hidden">
+    <div class="modal-header">
+      <h2>🧪 Simulador de Cenários de Teste (Para a Banca)</h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-bottom: 10px;">Clique em um cenário para forçar imediatamente os comportamentos e gatilhos autônomos do sistema:</p>
+      
+      <div class="cenarios-grid">
+        <div class="cenario-card" data-cenario="seca">
+          <div class="cenario-icon">☀️</div>
+          <div class="cenario-info">
+            <div class="cenario-title">Onda de Calor & Seca Extrema</div>
+            <div class="cenario-desc">Abaixa umidade para 22% e força o <strong>Gatilho de Salvamento (Irrigação Crítica)</strong>.</div>
+          </div>
+        </div>
+
+        <div class="cenario-card danger" data-cenario="escassez">
+          <div class="cenario-icon">🚨</div>
+          <div class="cenario-info">
+            <div class="cenario-title">Escassez Crítica de Água (&lt;15%)</div>
+            <div class="cenario-desc">Força o <strong>Bloqueio de Emergência</strong>, desliga bombas e bloqueia tentativas manuais com HTTP 423.</div>
+          </div>
+        </div>
+
+        <div class="cenario-card success" data-cenario="tempestade">
+          <div class="cenario-icon">🌧️</div>
+          <div class="cenario-info">
+            <div class="cenario-title">Tempestade Tropical</div>
+            <div class="cenario-desc">Chuva intensa que recarrega o reservatório para 94% e umedece o solo.</div>
+          </div>
+        </div>
+
+        <div class="cenario-card warning" data-cenario="apagao">
+          <div class="cenario-icon">⚡</div>
+          <div class="cenario-info">
+            <div class="cenario-title">Falha Geral de Retificadora</div>
+            <div class="cenario-desc">Simula desligamento de módulos na tela NOC e descarga de emergência em baterias.</div>
+          </div>
+        </div>
+
+        <div class="cenario-card" data-cenario="normal">
+          <div class="cenario-icon">🔄</div>
+          <div class="cenario-info">
+            <div class="cenario-title">Restaurar Condições Normais</div>
+            <div class="cenario-desc">Equilibra reservatório (72%), desativa bloqueios e restaura clima ensolarado.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Relatório de Auditoria -->
+  <div id="modal-relatorio" class="modal glass modal-lg hidden">
+    <div class="modal-header">
+      <h2>📄 Relatório de Auditoria Técnica & ESG</h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="relatorio-conteudo" class="relatorio-box">
+        <!-- Rendered dynamically -->
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button id="btn-download-csv" class="btn-primary" style="flex: 1;">📥 Baixar Arquivo CSV</button>
+        <button id="btn-print-report" class="btn-action" style="flex: 1;">🖨️ Imprimir / Salvar PDF</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Energia / Parâmetros -->
   <div id="modal-energia" class="modal glass hidden">
     <div class="modal-header">

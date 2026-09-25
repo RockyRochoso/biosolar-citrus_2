@@ -35,13 +35,56 @@ const btnToggleFalha     = $('#btn-toggle-falha');
 const zabbixListEl       = $('#zabbix-problems-list');
 const zabbixCountBadge   = $('#zabbix-count-badge');
 
+// Topbar Actions
+const btnCenarios   = $('#btn-cenarios');
+const btnRelatorio  = $('#btn-relatorio');
+
 // ── State ─────────────────────────────────────────────────
-let bloqueioAtivo     = false;
-let pending           = new Set();
-let isOnline          = false;
-let firstLoad         = true;
+let bloqueioAtivo       = false;
+let pending             = new Set();
+let isOnline            = false;
+let firstLoad           = true;
 let currentRetificadora = 'CPN-RTF-SMU02B';
-let latestTelemetria  = null;
+let latestTelemetria    = null;
+
+// ═══════════════════════════════════════════════════════════
+//  SECURITY & COMPRESSION HELPERS
+// ═══════════════════════════════════════════════════════════
+function escapeHTML(str) {
+  return String(str || '').replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
+
+function compressImage(file, maxWidth = 700, maxHeight = 500, quality = 0.82) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width;
+        let h = img.height;
+        if (w > maxWidth || h > maxHeight) {
+          if (w / h > maxWidth / maxHeight) {
+            h = Math.round((h * maxWidth) / w);
+            w = maxWidth;
+          } else {
+            w = Math.round((w * maxHeight) / h);
+            h = maxHeight;
+          }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 // ═══════════════════════════════════════════════════════════
 //  TAB NAVIGATION
@@ -207,7 +250,7 @@ function drawNOCChart(canvasId, series, color = '#22c55e', unit = '', minY = nul
   }
   ctx.setLineDash([]);
 
-  // Mock series if empty
+  // Data series calculation
   const data = (series && series.length >= 2) ? series : [0, 0, 0, 0, 0];
   const autoMin = minY !== null ? minY : Math.min(...data) * 0.95;
   const autoMax = maxY !== null ? maxY : Math.max(...data) * 1.05;
@@ -252,7 +295,7 @@ function drawNOCChart(canvasId, series, color = '#22c55e', unit = '', minY = nul
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Dots on last point
+  // Highlight last point
   const lastPt = pts[pts.length - 1];
   ctx.beginPath();
   ctx.arc(lastPt.x, lastPt.y, 3.5, 0, Math.PI * 2);
@@ -293,28 +336,28 @@ function renderTalhoes(talhoes, historico) {
     const hueDeg = -140 * (lossPct / 100);
     const satBoost = 100 + (lossPct / 100) * 100;
 
-    // Image source (custom base64/url or default)
     const imgSrc = t.imagem || `talhao_${id}.png`;
+    const safeNome = escapeHTML(t.nome);
 
     card.innerHTML = `
       <div class="talhao-header">
         <div class="talhao-title-wrap">
           <span class="talhao-fruit">${fruitEmoji(t.nome)}</span>
-          <span class="talhao-name">${t.nome}</span>
+          <span class="talhao-name">${safeNome}</span>
         </div>
         <div class="talhao-actions">
-          <button class="btn-talhao-action btn-edit-img" data-id="${id}" data-nome="${t.nome}" data-img="${imgSrc}" title="Alterar imagem/planta satélite">
+          <button class="btn-talhao-action btn-edit-img" data-id="${id}" data-nome="${safeNome}" data-img="${imgSrc}" title="Alterar imagem/planta satélite">
             🛰️ Foto
           </button>
-          <button class="btn-talhao-action delete btn-del-talhao" data-id="${id}" data-nome="${t.nome}" title="Excluir este talhão">
+          <button class="btn-talhao-action delete btn-del-talhao" data-id="${id}" data-nome="${safeNome}" title="Excluir este talhão">
             🗑️
           </button>
         </div>
       </div>
 
       <div class="talhao-image-wrap">
-        <img src="${imgSrc}" class="talhao-img" alt="NDVI do ${t.nome}" style="filter: hue-rotate(${hueDeg}deg) saturate(${satBoost}%)" onerror="this.src='talhao_1.png'">
-        <button class="talhao-img-overlay-btn btn-edit-img" data-id="${id}" data-nome="${t.nome}" data-img="${imgSrc}">
+        <img src="${imgSrc}" class="talhao-img" alt="NDVI do ${safeNome}" style="filter: hue-rotate(${hueDeg}deg) saturate(${satBoost}%)" onerror="this.src='talhao_1.png'">
+        <button class="talhao-img-overlay-btn btn-edit-img" data-id="${id}" data-nome="${safeNome}" data-img="${imgSrc}">
           📷 Trocar Imagem
         </button>
       </div>
@@ -329,7 +372,7 @@ function renderTalhoes(talhoes, historico) {
         <span class="switch-label">Aspersor</span>
         <button class="switch ${t.bomba ? 'on' : ''} ${bloqueioAtivo ? 'disabled' : ''}"
                 data-id="${id}" data-estado="${t.bomba}"
-                aria-label="Alternar bomba do ${t.nome}"></button>
+                aria-label="Alternar bomba do ${safeNome}"></button>
       </div>
     `;
     talhoesEl.appendChild(card);
@@ -386,7 +429,7 @@ async function onDeleteTalhao(e) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  UPDATE IMAGE MODAL & HANDLER
+//  UPDATE IMAGE MODAL & HANDLER (Com Compressão Automática)
 // ═══════════════════════════════════════════════════════════
 const modalImagemTalhao   = $('#modal-imagem-talhao');
 const modalImgTalhaoNome  = $('#modal-img-talhao-nome');
@@ -412,19 +455,15 @@ function onOpenImageModal(e) {
   modalImagemTalhao.classList.remove('hidden');
 }
 
-// Live preview when local file is chosen
-inputUpdateFile.addEventListener('change', (e) => {
+// Live preview & compression
+inputUpdateFile.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (file) {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      imgPreview.src = evt.target.result;
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImage(file);
+    imgPreview.src = compressed;
   }
 });
 
-// Live preview when URL is typed
 inputUpdateUrl.addEventListener('input', (e) => {
   const url = e.target.value.trim();
   if (url) {
@@ -465,7 +504,7 @@ btnSaveImagemTalhao.addEventListener('click', async () => {
 // ═══════════════════════════════════════════════════════════
 async function onToggle(e) {
   if (bloqueioAtivo) {
-    showToast('Bloqueio de emergência ativo — acionamento manual desabilitado.', 'error');
+    showToast('Bloqueio de emergência ativo — acionamento manual desabilitado (HTTP 423).', 'error');
     return;
   }
   const btn = e.currentTarget;
@@ -563,7 +602,7 @@ function renderNOC(data) {
   $('#val-last-corrente-dc-tot').textContent = `${rtf.corrente_dc_total?.toFixed(2) || '4.80'} A`;
   $('#leg-corrente-dc-tot').textContent = `${rtf.corrente_dc_total?.toFixed(2) || '4.80'} A`;
 
-  // Draw 8 Charts with series
+  // Draw 8 Charts
   const hEnergia = data.historico?.energia || {};
   drawNOCChart('chart-tensao-ac-a', hEnergia.tensao_ac_a || [218, 222, 224, 220, 224], color, 'V', 200, 240);
   drawNOCChart('chart-corrente-dc-a', hEnergia.corrente_dc_a || [3.0, 3.15, 3.3, 3.2, 3.3], color, 'A', 2.8, 3.6);
@@ -590,9 +629,9 @@ function renderZabbixProblems(problems) {
     card.innerHTML = `
       <div class="zabbix-icon-wrap">${icon}</div>
       <div class="zabbix-info">
-        <div class="zabbix-title">${p.titulo}</div>
-        <div class="zabbix-eq">${p.equipamento}</div>
-        <div class="zabbix-time">${p.tempo}</div>
+        <div class="zabbix-title">${escapeHTML(p.titulo)}</div>
+        <div class="zabbix-eq">${escapeHTML(p.equipamento)}</div>
+        <div class="zabbix-time">${escapeHTML(p.tempo)}</div>
       </div>
     `;
     zabbixListEl.appendChild(card);
@@ -625,7 +664,7 @@ btnToggleFalha.addEventListener('click', async () => {
 });
 
 // ═══════════════════════════════════════════════════════════
-//  KPIs & WEATHER
+//  KPIs & ESG METRICS
 // ═══════════════════════════════════════════════════════════
 function renderKPIs(data) {
   let bombasAtivas = 0;
@@ -636,7 +675,18 @@ function renderKPIs(data) {
 
   if (data.energia) {
     $('#kpi-consumo').textContent = (data.energia.consumo_acumulado_kwh || 0).toFixed(2);
-    $('#kpi-economia').textContent = `${data.energia.economia_estimada_pct || 0}%`;
+    
+    // ESG Metrics
+    if ($('#kpi-agua')) {
+      const l = data.energia.agua_economizada_l || 0;
+      $('#kpi-agua').textContent = l >= 1000 ? `${(l / 1000).toFixed(1)}k L` : `${l} L`;
+    }
+    if ($('#kpi-reais')) {
+      $('#kpi-reais').textContent = `R$ ${(data.energia.economia_reais || 0).toFixed(2)}`;
+    }
+    if ($('#kpi-co2')) {
+      $('#kpi-co2').textContent = `${(data.energia.co2_evitado_kg || 0).toFixed(2)} kg`;
+    }
 
     const uptimeS = data.energia.uptime_s || 0;
     const m = Math.floor(uptimeS / 60);
@@ -664,12 +714,128 @@ function renderEventLog(logs) {
   }
   logCountEl.textContent = `${logs.length} eventos`;
   eventLogEl.innerHTML = logs.map(l => `
-    <div class="log-entry ${l.tipo}">
-      <span class="log-ts">${l.ts}</span>
-      <span class="log-msg">${l.msg}</span>
+    <div class="log-entry ${escapeHTML(l.tipo)}">
+      <span class="log-ts">${escapeHTML(l.ts)}</span>
+      <span class="log-msg">${escapeHTML(l.msg)}</span>
     </div>
   `).join('');
 }
+
+// ═══════════════════════════════════════════════════════════
+//  CENÁRIOS DEMO (Modo Apresentação para a Banca)
+// ═══════════════════════════════════════════════════════════
+const modalCenarios = $('#modal-cenarios');
+
+btnCenarios.addEventListener('click', () => {
+  modalOverlay.classList.remove('hidden');
+  modalCenarios.classList.remove('hidden');
+});
+
+$$('.cenario-card').forEach(card => {
+  card.addEventListener('click', async () => {
+    const cenario = card.dataset.cenario;
+    try {
+      const res = await fetch('/cenario_aplicar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cenario })
+      });
+      if (res.ok) {
+        showToast(`Cenário "${cenario.toUpperCase()}" aplicado com sucesso!`, 'success');
+        closeModals();
+        fetchTelemetria();
+      }
+    } catch(e) {
+      showToast('Erro ao aplicar cenário.', 'error');
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  RELATÓRIO DE AUDITORIA TÉCNICA & ESG
+// ═══════════════════════════════════════════════════════════
+const modalRelatorio   = $('#modal-relatorio');
+const relatorioBoxEl   = $('#relatorio-conteudo');
+const btnDownloadCsv   = $('#btn-download-csv');
+const btnPrintReport   = $('#btn-print-report');
+
+btnRelatorio.addEventListener('click', () => {
+  if (!latestTelemetria) {
+    showToast('Aguardando sincronização de dados...', 'warning');
+    return;
+  }
+  renderRelatorio(latestTelemetria);
+  modalOverlay.classList.remove('hidden');
+  modalRelatorio.classList.remove('hidden');
+});
+
+function renderRelatorio(d) {
+  const dateStr = new Date().toLocaleString('pt-BR');
+  let talhoesHtml = '';
+  if (d.talhoes) {
+    Object.entries(d.talhoes).forEach(([id, t]) => {
+      talhoesHtml += `
+        <div class="rel-item">
+          <span class="rel-label">${escapeHTML(t.nome)}:</span>
+          <span class="rel-val ${t.critico ? 'alert' : 'ok'}">${t.umidade.toFixed(1)}% | Bomba: ${t.bomba ? 'LIGADA' : 'DESLIGADA'} ${t.critico ? '(CRÍTICO)' : ''}</span>
+        </div>
+      `;
+    });
+  }
+
+  relatorioBoxEl.innerHTML = `
+    <h4>BIOSOLAR CITRUS — RELATÓRIO TÉCNICO DE AUDITORIA & ESG</h4>
+    <div class="rel-item"><span class="rel-label">Data/Hora Emissão:</span><span class="rel-val">${dateStr}</span></div>
+    <div class="rel-item"><span class="rel-label">Protocolo de Operação:</span><span class="rel-val">V JTI — Desafio Opção 03</span></div>
+
+    <h4>1. RECURSOS HÍDRICOS</h4>
+    <div class="rel-item"><span class="rel-label">Nível Reservatório Central:</span><span class="rel-val ${d.reservatorio < 15 ? 'alert' : 'ok'}">${d.reservatorio}%</span></div>
+    <div class="rel-item"><span class="rel-label">Bloqueio de Emergência:</span><span class="rel-val ${d.bloqueio_emergencia ? 'alert' : 'ok'}">${d.bloqueio_emergencia ? 'ATIVADO (<15%)' : 'NORMAL'}</span></div>
+    <div class="rel-item"><span class="rel-label">Água Poupada Estimada:</span><span class="rel-val ok">${d.energia?.agua_economizada_l || 0} Litros</span></div>
+
+    <h4>2. MONITORAMENTO DOS TALHÕES</h4>
+    ${talhoesHtml}
+
+    <h4>3. SUFICIÊNCIA ENERGÉTICA & ESG</h4>
+    <div class="rel-item"><span class="rel-label">Consumo Acumulado:</span><span class="rel-val">${d.energia?.consumo_acumulado_kwh || 0} kWh</span></div>
+    <div class="rel-item"><span class="rel-label">Economia Financeira Gerada:</span><span class="rel-val ok">R$ ${(d.energia?.economia_reais || 0).toFixed(2)}</span></div>
+    <div class="rel-item"><span class="rel-label">Redução de Emissões CO₂:</span><span class="rel-val ok">${(d.energia?.co2_evitado_kg || 0).toFixed(2)} kg CO₂</span></div>
+    <div class="rel-item"><span class="rel-label">Tempo de Uptime:</span><span class="rel-val">${Math.floor((d.energia?.uptime_s || 0)/60)} minutos</span></div>
+  `;
+}
+
+btnDownloadCsv.addEventListener('click', () => {
+  if (!latestTelemetria) return;
+  const d = latestTelemetria;
+  const now = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+  
+  let csv = 'Categoria;Parametro;Valor;Unidade\n';
+  csv += `Geral;DataHora;${new Date().toLocaleString('pt-BR')};-\n`;
+  csv += `Hidrico;Reservatorio;${d.reservatorio};%\n`;
+  csv += `Hidrico;BloqueioEmergencia;${d.bloqueio_emergencia ? 'SIM' : 'NAO'};-\n`;
+  csv += `Hidrico;AguaEconomizada;${d.energia?.agua_economizada_l || 0};Litros\n`;
+  csv += `Energia;ConsumoAcumulado;${d.energia?.consumo_acumulado_kwh || 0};kWh\n`;
+  csv += `Energia;EconomiaReais;${d.energia?.economia_reais || 0};BRL\n`;
+  csv += `ESG;CO2Evitado;${d.energia?.co2_evitado_kg || 0};kg\n`;
+
+  if (d.talhoes) {
+    Object.entries(d.talhoes).forEach(([id, t]) => {
+      csv += `Talhao;${t.nome} Umidade;${t.umidade.toFixed(1)};%\n`;
+      csv += `Talhao;${t.nome} Bomba;${t.bomba ? 'LIGADA' : 'DESLIGADA'};-\n`;
+    });
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `biosolar_auditoria_${now}.csv`;
+  link.click();
+  showToast('Download do relatório CSV iniciado!', 'success');
+});
+
+btnPrintReport.addEventListener('click', () => {
+  window.print();
+});
 
 // ═══════════════════════════════════════════════════════════
 //  MAIN POLL
@@ -732,6 +898,8 @@ const closeModals = () => {
   modalEnergia.classList.add('hidden');
   modalTalhao.classList.add('hidden');
   modalImagemTalhao.classList.add('hidden');
+  modalCenarios.classList.add('hidden');
+  modalRelatorio.classList.add('hidden');
 };
 
 $$('.modal-close').forEach(btn => btn.addEventListener('click', closeModals));
@@ -770,7 +938,7 @@ $('#btn-save-energia').addEventListener('click', async () => {
   }
 });
 
-// Add New Talhão (with optional Image)
+// Add New Talhão (with optional Image & compression)
 $('#btn-save-talhao').addEventListener('click', async () => {
   const nome = $('#input-talhao-nome').value.trim() || 'Novo Talhão';
   const fileInput = $('#input-talhao-file');
@@ -799,11 +967,8 @@ $('#btn-save-talhao').addEventListener('click', async () => {
   };
 
   if (fileInput.files && fileInput.files[0]) {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      sendAddRequest(evt.target.result);
-    };
-    reader.readAsDataURL(fileInput.files[0]);
+    const compressed = await compressImage(fileInput.files[0]);
+    sendAddRequest(compressed);
   } else {
     sendAddRequest(imagem);
   }
