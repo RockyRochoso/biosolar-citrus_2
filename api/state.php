@@ -202,7 +202,14 @@ function load_state(): array {
     flock($fp, LOCK_UN);
     fclose($fp);
     $data = json_decode($raw, true);
-    return $data ? migrate_state($data) : default_state();
+    $s = $data ? migrate_state($data) : default_state();
+    if (empty($s['last_update']) || $s['last_update'] <= 0) {
+        $s['last_update'] = microtime(true);
+    }
+    if (empty($s['energia']['start_time']) || $s['energia']['start_time'] <= 0) {
+        $s['energia']['start_time'] = microtime(true);
+    }
+    return $s;
 }
 
 function save_state(array $state): void {
