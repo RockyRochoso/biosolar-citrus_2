@@ -57,6 +57,7 @@ echo json_encode([
     ],
     'retificadoras'        => $state['retificadoras'] ?? [],
     'zabbix_problems'      => $state['zabbix_problems'] ?? [],
+    'iot'                  => $state['iot'] ?? [],
 ], JSON_UNESCAPED_UNICODE);
 
 

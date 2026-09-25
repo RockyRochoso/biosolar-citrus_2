@@ -13,8 +13,10 @@ const $$ = (sel) => document.querySelectorAll(sel);
 // Views & Navigation
 const tabBtnPomar    = $('#tab-btn-pomar');
 const tabBtnEnergia  = $('#tab-btn-energia');
+const tabBtnIot      = $('#tab-btn-iot');
 const viewPomar      = $('#view-pomar');
 const viewEnergia    = $('#view-energia');
+const viewIot        = $('#view-iot');
 
 // Agro Elements
 const talhoesEl     = $('#talhoes');
@@ -92,16 +94,30 @@ function compressImage(file, maxWidth = 700, maxHeight = 500, quality = 0.82) {
 tabBtnPomar.addEventListener('click', () => {
   tabBtnPomar.classList.add('active');
   tabBtnEnergia.classList.remove('active');
+  tabBtnIot.classList.remove('active');
   viewPomar.classList.add('active');
   viewEnergia.classList.remove('active');
+  viewIot.classList.remove('active');
 });
 
 tabBtnEnergia.addEventListener('click', () => {
   tabBtnEnergia.classList.add('active');
   tabBtnPomar.classList.remove('active');
+  tabBtnIot.classList.remove('active');
   viewEnergia.classList.add('active');
   viewPomar.classList.remove('active');
+  viewIot.classList.remove('active');
   if (latestTelemetria) renderNOC(latestTelemetria);
+});
+
+tabBtnIot.addEventListener('click', () => {
+  tabBtnIot.classList.add('active');
+  tabBtnPomar.classList.remove('active');
+  tabBtnEnergia.classList.remove('active');
+  viewIot.classList.add('active');
+  viewPomar.classList.remove('active');
+  viewEnergia.classList.remove('active');
+  if (latestTelemetria) renderIoT(latestTelemetria);
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -617,6 +633,79 @@ function renderNOC(data) {
   renderZabbixProblems(data.zabbix_problems || []);
 }
 
+// ═══════════════════════════════════════════════════════════
+//  IOT FLEET MANAGEMENT RENDERING
+// ═══════════════════════════════════════════════════════════
+function renderIoT(data) {
+  if (!data.iot) return;
+  const iot = data.iot;
+  
+  // Update Gateway
+  const gtwStatus = $('#gtw-status');
+  const gtwLoss = $('#gtw-loss');
+  const gtwPing = $('#gtw-ping');
+  
+  if (iot.gateway.status === 'ONLINE') {
+    gtwStatus.className = 'status-badge on';
+    gtwStatus.textContent = 'ONLINE';
+  } else {
+    gtwStatus.className = 'status-badge off';
+    gtwStatus.textContent = 'OFFLINE';
+  }
+  gtwLoss.textContent = (iot.gateway.packet_loss || 0).toFixed(1) + '%';
+  gtwPing.textContent = iot.gateway.last_ping || 0;
+
+  // Render End-Nodes in Topology
+  const diagramEl = $('#iot-end-nodes-diagram');
+  const tbodyEl = $('#iot-sensors-tbody');
+  diagramEl.innerHTML = '';
+  tbodyEl.innerHTML = '';
+
+  if (iot.sensores) {
+    Object.entries(iot.sensores).forEach(([nodeId, sensor]) => {
+      // 1. Topology Node
+      let nodeClass = 'sensor-node';
+      let badgeClass = 'on';
+      if (sensor.status === 'WARNING') { nodeClass += ' warning'; badgeClass = 'warn'; }
+      if (sensor.status === 'OFFLINE') { nodeClass += ' offline'; badgeClass = 'off'; }
+
+      diagramEl.innerHTML += `
+        <div class="node ${nodeClass}">
+          <span class="node-icon">🌱</span>
+          <span>Nó Talhão ${sensor.talhao}</span>
+          <div class="node-stats">
+            <span class="status-badge ${badgeClass}">${sensor.status}</span>
+          </div>
+        </div>
+      `;
+
+      // 2. Table Row
+      // RSSI bar calculation (-130 = 0%, -50 = 100%)
+      const rssiPct = Math.max(0, Math.min(100, ((sensor.rssi + 130) / 80) * 100));
+      let rssiColor = '#ef4444';
+      if (rssiPct > 30) rssiColor = '#f59e0b';
+      if (rssiPct > 60) rssiColor = '#10b981';
+
+      tbodyEl.innerHTML += `
+        <tr>
+          <td><span class="status-badge ${badgeClass}">${sensor.status}</span></td>
+          <td><strong>Talhão ${sensor.talhao}</strong> (${nodeId})</td>
+          <td>${sensor.tipo}</td>
+          <td>${sensor.bateria_pct.toFixed(1)}%</td>
+          <td>
+            <div class="rssi-bar-wrap">
+              <span>${sensor.rssi} dBm</span>
+              <div class="rssi-bar"><div class="rssi-fill" style="width: ${rssiPct}%; background: ${rssiColor}"></div></div>
+            </div>
+          </td>
+          <td>${sensor.snr.toFixed(1)} dB</td>
+          <td>${sensor.last_uplink}</td>
+        </tr>
+      `;
+    });
+  }
+}
+
 function renderZabbixProblems(problems) {
   zabbixListEl.innerHTML = '';
   zabbixCountBadge.textContent = `${problems.length} ativos`;
@@ -864,6 +953,9 @@ async function fetchTelemetria() {
 
     // Render NOC dashboard
     renderNOC(data);
+    
+    // Render IoT dashboard
+    renderIoT(data);
 
     // Populate modal energia inputs on first load
     if (firstLoad && data.energia) {

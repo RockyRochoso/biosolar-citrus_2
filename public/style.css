@@ -1077,3 +1077,122 @@ body::before {
   }
 }
 
+/* -----------------------------------------------------------
+   VIEW 3: IOT NETWORK & SENSORS
+   ----------------------------------------------------------- */
+.iot-dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 10px;
+}
+.iot-topology {
+  text-align: center;
+  padding: 30px;
+}
+.topology-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 20px;
+}
+.node {
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 15px 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #f8fafc;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+.node-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+.cloud { border-color: #22d3ee; }
+.gateway { border-color: #10b981; }
+.sensor-node { border-color: #3b82f6; margin: 0 10px; }
+.sensor-node.warning { border-color: #f59e0b; }
+.sensor-node.offline { border-color: #ef4444; opacity: 0.6; }
+.link-line {
+  width: 2px;
+  height: 40px;
+  background: linear-gradient(to bottom, #22d3ee, #10b981);
+}
+.link-line.multi {
+  height: 30px;
+  background: #10b981;
+}
+.end-nodes {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding-top: 15px;
+  border-top: 2px solid #10b981;
+  width: 80%;
+  position: relative;
+}
+.end-nodes::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: transparent;
+}
+.status-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.status-badge.on { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.status-badge.warn { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.status-badge.off { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+.iot-table-section {
+  padding: 20px;
+}
+.iot-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+  font-size: 14px;
+}
+.iot-table th {
+  text-align: left;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  color: #94a3b8;
+  font-weight: 600;
+}
+.iot-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: #cbd5e1;
+}
+.iot-table tr:hover {
+  background: rgba(255,255,255,0.02);
+}
+.rssi-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rssi-bar {
+  height: 6px;
+  width: 50px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.rssi-fill {
+  height: 100%;
+  border-radius: 3px;
+}

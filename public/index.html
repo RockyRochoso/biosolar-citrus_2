@@ -35,6 +35,10 @@
         <span class="tab-icon">⚡</span>
         <span>Suficiência Energética (NOC)</span>
       </button>
+      <button id="tab-btn-iot" class="nav-tab">
+        <span class="tab-icon">📡</span>
+        <span>Rede IoT & Sensores</span>
+      </button>
     </nav>
 
     <div class="topbar-right">
@@ -412,6 +416,60 @@
           <!-- Dynamically populated -->
         </div>
       </aside>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════
+       VIEW 3: REDE IOT E GESTÃO DE SENSORES
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="view-iot" class="view-section">
+    <div class="iot-dashboard-layout">
+      
+      <!-- Topologia / Gateway -->
+      <section class="card glass iot-topology">
+        <h2>🌐 Topologia da Rede LoRaWAN</h2>
+        <div class="topology-diagram">
+          <div class="node cloud">
+            <span class="node-icon">☁️</span>
+            <span>Cloud NOC</span>
+          </div>
+          <div class="link-line"></div>
+          <div class="node gateway">
+            <span class="node-icon">📡</span>
+            <span>Gateway Base</span>
+            <div class="node-stats">
+              <span id="gtw-status" class="status-badge on">ONLINE</span>
+              <br><small>Loss: <span id="gtw-loss">0.0%</span> | Ping: <span id="gtw-ping">12</span>ms</small>
+            </div>
+          </div>
+          <div class="link-line multi"></div>
+          <div class="end-nodes" id="iot-end-nodes-diagram">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabela de Sensores -->
+      <section class="card glass iot-table-section">
+        <h2>🔋 Fleet Management: End-Nodes & Sensores</h2>
+        <table class="iot-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Nó / Talhão</th>
+              <th>Tipo</th>
+              <th>Bateria</th>
+              <th>Sinal (RSSI)</th>
+              <th>SNR</th>
+              <th>Último Uplink</th>
+            </tr>
+          </thead>
+          <tbody id="iot-sensors-tbody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </section>
 
     </div>
   </div>

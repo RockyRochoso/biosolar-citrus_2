@@ -104,6 +104,26 @@ function default_state(): array {
                 'consumo_w' => 0.0,
             ]
         ],
+        'iot' => [
+            'gateway' => [
+                'status' => 'ONLINE',
+                'protocol' => 'LoRaWAN / MQTT',
+                'uptime' => '99.98%',
+                'packet_loss' => 0.2,
+                'last_ping' => 12
+            ],
+            'sensores' => [
+                'node_t1' => [
+                    'talhao' => '1', 'bateria_pct' => 88.5, 'rssi' => -92, 'snr' => 5.2, 'last_uplink' => 'agora', 'status' => 'ONLINE', 'tipo' => 'Umidade/Solo'
+                ],
+                'node_t2' => [
+                    'talhao' => '2', 'bateria_pct' => 65.0, 'rssi' => -112, 'snr' => -1.5, 'last_uplink' => 'agora', 'status' => 'WARNING', 'tipo' => 'Umidade/Solo'
+                ],
+                'node_t3' => [
+                    'talhao' => '3', 'bateria_pct' => 95.0, 'rssi' => -85, 'snr' => 7.1, 'last_uplink' => 'agora', 'status' => 'ONLINE', 'tipo' => 'Umidade/Solo'
+                ]
+            ]
+        ],
         'zabbix_problems' => [
             [
                 'id' => 1,
@@ -162,6 +182,9 @@ function migrate_state(array $s): array {
     }
     if (!isset($s['retificadoras'])) {
         $s['retificadoras'] = $default['retificadoras'];
+    }
+    if (!isset($s['iot'])) {
+        $s['iot'] = $default['iot'];
     }
     if (!isset($s['zabbix_problems'])) {
         $s['zabbix_problems'] = $default['zabbix_problems'];
@@ -431,6 +454,28 @@ function simulate(array &$state): void {
             $rtf['temp_media'] = clamp(36 + ($bombas_ativas * 2) + ($uv * 0.4), 25, 60);
         }
         unset($rtf);
+    }
+
+    // ── Simulação IoT ──
+    if (isset($state['iot']['sensores'])) {
+        foreach ($state['iot']['sensores'] as &$sensor) {
+            // Flutuação de RSSI e SNR
+            $sensor['rssi'] = clamp($sensor['rssi'] + mt_rand(-2, 2), -130, -50);
+            $sensor['snr'] = clamp($sensor['snr'] + mt_rand(-10, 10) / 10, -20, 10);
+            $sensor['bateria_pct'] = clamp($sensor['bateria_pct'] - (0.01 * $elapsed / 60), 0, 100);
+            
+            if ($sensor['rssi'] < -120) {
+                $sensor['status'] = 'OFFLINE';
+            } elseif ($sensor['rssi'] < -110 || $sensor['bateria_pct'] < 20) {
+                $sensor['status'] = 'WARNING';
+            } else {
+                $sensor['status'] = 'ONLINE';
+            }
+        }
+        unset($sensor);
+        
+        $state['iot']['gateway']['packet_loss'] = clamp($state['iot']['gateway']['packet_loss'] + (mt_rand(-10, 10) / 100), 0, 5);
+        $state['iot']['gateway']['last_ping'] = mt_rand(10, 45);
     }
 
     // ── Histórico ──
