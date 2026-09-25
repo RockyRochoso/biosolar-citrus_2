@@ -27,7 +27,9 @@ $litros_gastos = $horas_bomba_efetivas * $litros_por_hora_bomba;
 $agua_economizada_l = max(0, $litros_teorico - $litros_gastos);
 
 // Economia financeira (R$ 0,85 por kWh + economia de água tratada R$ 0,004/L)
+$consumo_continuo = $total_talhoes * POTENCIA_BOMBA_KW * $horas_operacao;
 $kwh_economizado = max(0, $consumo_continuo - $kwh_consumido);
+$economia_pct = ($consumo_continuo > 0) ? ($kwh_economizado / $consumo_continuo) * 100 : 0;
 $economia_reais = ($kwh_economizado * 0.85) + ($agua_economizada_l * 0.004);
 
 // CO2 evitado (0.092 kg de CO2 por kWh solar vs rede fóssil)
