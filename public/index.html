@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Painel de automação hidro-energética para pomares de citros — monitoramento em tempo real de irrigação, reservatório e condições climáticas.">
+  <title>BioSolar Citrus | Painel de Automação Agro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Toast Notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- ═══ Top Bar ═══ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">🍊</span>
+      <div>
+        <h1>BioSolar Citrus</h1>
+        <p class="brand-sub">Automação Hidro-Energética de Pomares de Citros</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button id="btn-reset" class="btn-reset" title="Reiniciar simulação">↻ Reset</button>
+      <div id="conn-status" class="conn-status">
+        <span class="conn-dot"></span>
+        <span class="conn-text">Conectando…</span>
+      </div>
+      <div id="clock" class="clock">--:--:--</div>
+    </div>
+  </header>
+
+  <!-- ═══ Emergency Banner ═══ -->
+  <div id="emergency-banner" class="banner hidden">
+    <span class="banner-pulse"></span>
+    ⚠ BLOQUEIO DE EMERGÊNCIA ATIVO — reservatório abaixo do limite crítico. Todas as bombas foram desligadas.
+  </div>
+
+  <!-- ═══ KPI Strip ═══ -->
+  <section class="kpi-strip" id="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-icon">💧</div>
+      <div class="kpi-body">
+        <span class="kpi-value" id="kpi-bombas">0</span>
+        <span class="kpi-label">Bombas Ativas</span>
+      </div>
+    </div>
+    <div class="kpi" id="kpi-energia-btn" style="cursor: pointer;" title="Configurar Energia">
+      <div class="kpi-icon">⚡</div>
+      <div class="kpi-body">
+        <span class="kpi-value" id="kpi-consumo">0.00</span>
+        <span class="kpi-label">kWh Consumidos</span>
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-icon">🌱</div>
+      <div class="kpi-body">
+        <span class="kpi-value" id="kpi-economia">0%</span>
+        <span class="kpi-label">Economia Estimada</span>
+      </div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-icon">🕐</div>
+      <div class="kpi-body">
+        <span class="kpi-value" id="kpi-uptime">00:00</span>
+        <span class="kpi-label">Uptime do Sistema</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Main Dashboard ═══ -->
+  <main class="dashboard">
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Circular Gauge — Reservatório -->
+      <section class="card glass reservoir-card">
+        <h2>Reservatório Central</h2>
+        <div class="circular-gauge-wrap">
+          <svg class="circular-gauge" viewBox="0 0 160 160">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#10b981"/>
+                <stop offset="100%" stop-color="#22d3ee"/>
+              </linearGradient>
+            </defs>
+            <circle class="gauge-track" cx="80" cy="80" r="66"/>
+            <circle id="gauge-arc" class="gauge-arc" cx="80" cy="80" r="66"
+                    stroke-dasharray="414.69" stroke-dashoffset="414.69"/>
+            <text id="gauge-text" class="gauge-text" x="80" y="78"
+                  text-anchor="middle" dominant-baseline="central">--%</text>
+            <text class="gauge-sub" x="80" y="100" text-anchor="middle">Nível</text>
+          </svg>
+        </div>
+        <canvas id="reservoir-sparkline" class="sparkline-canvas" width="240" height="48"></canvas>
+        <p class="hint">Crítico &lt; 15% · Alerta &lt; 40%</p>
+      </section>
+
+      <!-- Weather Panel -->
+      <section class="card glass weather-card">
+        <h2>Condições Climáticas</h2>
+        <div class="weather-hero">
+          <span id="weather-icon" class="weather-icon-big">☀️</span>
+          <span id="weather-condition" class="weather-condition-text">Ensolarado</span>
+        </div>
+        <div class="weather-grid">
+          <div class="weather-item">
+            <span class="wi-icon">🌡️</span>
+            <span class="wi-value" id="w-temp">--°C</span>
+            <span class="wi-label">Temperatura</span>
+          </div>
+          <div class="weather-item">
+            <span class="wi-icon">💨</span>
+            <span class="wi-value" id="w-vento">-- km/h</span>
+            <span class="wi-label">Vento</span>
+          </div>
+          <div class="weather-item">
+            <span class="wi-icon">☀️</span>
+            <span class="wi-value" id="w-uv">--</span>
+            <span class="wi-label">Índice UV</span>
+          </div>
+          <div class="weather-item">
+            <span class="wi-icon">🌧️</span>
+            <span class="wi-value" id="w-chuva">--%</span>
+            <span class="wi-label">Chance Chuva</span>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Right Content -->
+    <div class="main-content">
+
+      <!-- Talhões -->
+      <div class="section-header">
+        <h2>Talhões</h2>
+        <button id="btn-add-talhao" class="btn-action">+ Adicionar Talhão</button>
+      </div>
+      <section id="talhoes" class="talhoes"></section>
+
+      <!-- Event Log -->
+      <section class="card glass log-card">
+        <div class="log-header">
+          <h2>📋 Log de Eventos</h2>
+          <span class="log-badge" id="log-count">0 eventos</span>
+        </div>
+        <div id="event-log" class="event-log">
+          <div class="log-empty">Aguardando eventos do sistema…</div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ═══ Footer ═══ -->
+  <footer class="footer">
+    <p>Dados atualizados exclusivamente pelo servidor via <code>GET /telemetria</code>. Nenhum estado é salvo no navegador.</p>
+    <p class="footer-sub">BioSolar Citrus — V JTI · Caderno de Desafio Opção 03</p>
+  </footer>
+
+  <!-- Modals -->
+  <div id="modal-overlay" class="modal-overlay hidden"></div>
+  
+  <div id="modal-energia" class="modal glass hidden">
+    <div class="modal-header">
+      <h2>Configurações de Energia</h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="input-group">
+        <label>Número de Baterias</label>
+        <input type="number" id="input-baterias" min="1" value="4">
+      </div>
+      <div class="input-group">
+        <label>Tempo de Descarga (min)</label>
+        <input type="number" id="input-descarga" min="10" value="120">
+      </div>
+      <div class="input-group">
+        <label>Consumo por Bomba (kW)</label>
+        <input type="number" id="input-consumo" min="0.1" step="0.1" value="2.2">
+      </div>
+      <button id="btn-save-energia" class="btn-primary">Salvar</button>
+    </div>
+  </div>
+
+  <div id="modal-talhao" class="modal glass hidden">
+    <div class="modal-header">
+      <h2>Adicionar Novo Talhão</h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="input-group">
+        <label>Nome do Talhão</label>
+        <input type="text" id="input-talhao-nome" placeholder="Ex: Talhão 4 - Limão">
+      </div>
+      <button id="btn-save-talhao" class="btn-primary">Adicionar</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
