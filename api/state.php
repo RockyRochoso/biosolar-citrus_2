@@ -26,17 +26,27 @@ define('POTENCIA_BOMBA_KW',  2.2); // consumo elétrico por bomba (kW)
 function default_state(): array {
     return [
         'talhoes' => [
-            '1' => ['nome' => 'Talhão 1 - Laranja', 'umidade' => 62.0, 'bomba' => false, 'critico' => false],
-            '2' => ['nome' => 'Talhão 2 - Limão',   'umidade' => 48.0, 'bomba' => false, 'critico' => false],
-            '3' => ['nome' => 'Talhão 3 - Laranja', 'umidade' => 70.0, 'bomba' => false, 'critico' => false],
+            '1' => ['nome' => 'Talhão 1 - Laranja', 'umidade' => 62.0, 'bomba' => false, 'critico' => false, 'imagem' => 'talhao_1.png'],
+            '2' => ['nome' => 'Talhão 2 - Limão',   'umidade' => 48.0, 'bomba' => false, 'critico' => false, 'imagem' => 'talhao_2.png'],
+            '3' => ['nome' => 'Talhão 3 - Laranja', 'umidade' => 70.0, 'bomba' => false, 'critico' => false, 'imagem' => 'talhao_3.png'],
         ],
         'reservatorio'        => 65.0,
         'bloqueio_emergencia' => false,
         'last_update'         => microtime(true),
         'historico' => [
             'timestamps'   => [],
-            'reservatorio'  => [],
+            'reservatorio' => [],
             'talhoes'      => ['1' => [], '2' => [], '3' => []],
+            'energia'      => [
+                'bateria'      => [],
+                'tensao_ac_a'  => [],
+                'tensao_ac_b'  => [],
+                'corrente_dc_a'=> [],
+                'corrente_dc_b'=> [],
+                'consumo_w'    => [],
+                'tensao_dc'    => [],
+                'corrente_dc'  => [],
+            ]
         ],
         'log_eventos' => [],
         'clima' => [
@@ -53,33 +63,129 @@ function default_state(): array {
             'tempo_descarga'       => 120, // Minutos
             'consumo_bomba'        => 2.2, // kW
         ],
+        'retificadoras' => [
+            'CPN-RTF-SMU02B' => [
+                'nome' => 'CPN-RTF-SMU02B (Principal Solar)',
+                'status' => 'UP',
+                'modulos' => [
+                    'rectifier1' => 'UP',
+                    'rectifier2' => 'UP',
+                    'rectifier3' => 'UP',
+                ],
+                'temp_media' => 38.0,
+                'tempo_operacao' => '14.3 weeks',
+                'latencia' => '946 µs',
+                'bateria_pct' => 100.0,
+                'tensao_ac_a' => 224.0,
+                'tensao_ac_b' => 224.0,
+                'corrente_dc_a' => 3.30,
+                'corrente_dc_b' => 3.10,
+                'tensao_dc' => 54.6,
+                'corrente_dc_total' => 4.80,
+                'consumo_w' => 517.0,
+            ],
+            'OUR-SJS-RTF-SMU11B' => [
+                'nome' => 'OUR-SJS-RTF-SMU11B (Backup / Setor Sul)',
+                'status' => 'OFF',
+                'modulos' => [
+                    'rectifier1' => 'OFF',
+                    'rectifier2' => 'OFF',
+                ],
+                'temp_media' => 33.0,
+                'tempo_operacao' => '13.3 weeks',
+                'latencia' => '1.76 ms',
+                'bateria_pct' => 86.0,
+                'tensao_ac_a' => 0.0,
+                'tensao_ac_b' => 0.0,
+                'corrente_dc_a' => 0.0,
+                'corrente_dc_b' => 0.0,
+                'tensao_dc' => 49.6,
+                'corrente_dc_total' => 4.60,
+                'consumo_w' => 0.0,
+            ]
+        ],
+        'zabbix_problems' => [
+            [
+                'id' => 1,
+                'tipo' => 'danger',
+                'icon' => 'heart-crack',
+                'titulo' => 'Módulo Rectifier2 desligou',
+                'equipamento' => 'OUR-SJS-RTF-SMU11B',
+                'tempo' => '25 Sep 2026 11:08:18 (35 min atrás)',
+            ],
+            [
+                'id' => 2,
+                'tipo' => 'danger',
+                'icon' => 'heart-crack',
+                'titulo' => 'Módulo Rectifier1 desligou',
+                'equipamento' => 'OUR-SJS-RTF-SMU11B',
+                'tempo' => '25 Sep 2026 11:08:18 (18 min atrás)',
+            ],
+            [
+                'id' => 3,
+                'tipo' => 'info',
+                'icon' => 'heart',
+                'titulo' => 'Bateria está em carga rápida',
+                'equipamento' => 'OUR-RTF-SMU11B',
+                'tempo' => '01 Sep 2026 11:39:17 (24 days)',
+            ],
+            [
+                'id' => 4,
+                'tipo' => 'info',
+                'icon' => 'battery-charging',
+                'titulo' => 'Corrente de Baterias Limitada',
+                'equipamento' => 'OUR-RTF-SMU11B',
+                'tempo' => '01 Sep 2026 11:00:17 (24 days)',
+            ],
+            [
+                'id' => 5,
+                'tipo' => 'info',
+                'icon' => 'battery-charging',
+                'titulo' => 'Corrente de Baterias Limitada',
+                'equipamento' => 'BVT-RTF-SMU11B',
+                'tempo' => '10 Jul 2026 15:12:09 (2 months)',
+            ]
+        ]
     ];
 }
 
 /**
- * Migra state.json antigo para o formato v2, adicionando campos novos
- * sem perder o estado existente.
+ * Migra state.json antigo para o formato v3
  */
 function migrate_state(array $s): array {
+    $default = default_state();
     if (!isset($s['historico'])) {
-        $ids = array_keys($s['talhoes']);
-        $s['historico'] = [
-            'timestamps'   => [],
-            'reservatorio'  => [],
-            'talhoes'      => array_fill_keys($ids, []),
-        ];
+        $s['historico'] = $default['historico'];
+    }
+    if (!isset($s['historico']['energia'])) {
+        $s['historico']['energia'] = $default['historico']['energia'];
+    }
+    if (!isset($s['retificadoras'])) {
+        $s['retificadoras'] = $default['retificadoras'];
+    }
+    if (!isset($s['zabbix_problems'])) {
+        $s['zabbix_problems'] = $default['zabbix_problems'];
     }
     if (!isset($s['log_eventos']))  $s['log_eventos'] = [];
     if (!isset($s['clima'])) {
-        $s['clima'] = ['temperatura'=>31,'vento_kmh'=>8,'uv'=>7,'chance_chuva'=>10,'condicao'=>'ensolarado'];
+        $s['clima'] = $default['clima'];
     }
     if (!isset($s['energia'])) {
-        $s['energia'] = ['consumo_acumulado_kwh'=>0,'start_time'=>microtime(true)];
+        $s['energia'] = $default['energia'];
     }
     if (!isset($s['energia']['baterias'])) {
         $s['energia']['baterias'] = 4;
         $s['energia']['tempo_descarga'] = 120;
         $s['energia']['consumo_bomba'] = 2.2;
+    }
+    // Assegura campo imagem em cada talhao
+    if (isset($s['talhoes'])) {
+        foreach ($s['talhoes'] as $id => &$t) {
+            if (!isset($t['imagem'])) {
+                $t['imagem'] = "talhao_{$id}.png";
+            }
+        }
+        unset($t);
     }
     return $s;
 }
@@ -127,15 +233,31 @@ function add_log(array &$state, string $tipo, string $msg): void {
     }
 }
 
-// ── Histórico (buffer circular para sparklines) ──────────────────────────
+// ── Histórico (buffer circular para sparklines e gráficos elétricos) ──────────────────────────
 
 function push_history(array &$state): void {
     $h = &$state['historico'];
     $h['timestamps'][]   = date('H:i:s');
     $h['reservatorio'][] = round($state['reservatorio'], 1);
     foreach ($state['talhoes'] as $id => $t) {
+        if (!isset($h['talhoes'][$id])) $h['talhoes'][$id] = [];
         $h['talhoes'][$id][] = round($t['umidade'], 1);
     }
+    
+    // Histórico de energia (usando a retificadora principal)
+    $rtf = $state['retificadoras']['CPN-RTF-SMU02B'] ?? null;
+    if ($rtf) {
+        if (!isset($h['energia'])) $h['energia'] = [];
+        $h['energia']['bateria'][]       = round($rtf['bateria_pct'], 1);
+        $h['energia']['tensao_ac_a'][]   = round($rtf['tensao_ac_a'], 1);
+        $h['energia']['tensao_ac_b'][]   = round($rtf['tensao_ac_b'], 1);
+        $h['energia']['corrente_dc_a'][] = round($rtf['corrente_dc_a'], 2);
+        $h['energia']['corrente_dc_b'][] = round($rtf['corrente_dc_b'], 2);
+        $h['energia']['consumo_w'][]     = round($rtf['consumo_w'], 0);
+        $h['energia']['tensao_dc'][]     = round($rtf['tensao_dc'], 1);
+        $h['energia']['corrente_dc'][]   = round($rtf['corrente_dc_total'], 2);
+    }
+
     if (count($h['timestamps']) > HISTORY_MAX) {
         $h['timestamps']   = array_slice($h['timestamps'],   -HISTORY_MAX);
         $h['reservatorio'] = array_slice($h['reservatorio'],  -HISTORY_MAX);
@@ -143,6 +265,12 @@ function push_history(array &$state): void {
             $arr = array_slice($arr, -HISTORY_MAX);
         }
         unset($arr);
+        if (isset($h['energia'])) {
+            foreach ($h['energia'] as $k => &$arr) {
+                $arr = array_slice($arr, -HISTORY_MAX);
+            }
+            unset($arr);
+        }
     }
 }
 
@@ -272,6 +400,30 @@ function simulate(array &$state): void {
             }
         }
         unset($t);
+    }
+
+    // ── Simulação de Retificadoras & Suficiência Energética ──
+    if (isset($state['retificadoras']['CPN-RTF-SMU02B'])) {
+        $rtf = &$state['retificadoras']['CPN-RTF-SMU02B'];
+        if ($rtf['status'] === 'UP') {
+            $uv = $state['clima']['uv'] ?? 7;
+            $noise = (mt_rand(-10, 10) / 10);
+            $rtf['tensao_ac_a'] = clamp(222.0 + $noise * 3, 212, 226);
+            $rtf['tensao_ac_b'] = clamp(223.0 + (mt_rand(-8, 8) / 10) * 3, 212, 226);
+            $base_corrente = 3.1 + ($bombas_ativas * 1.5);
+            $rtf['corrente_dc_a'] = clamp($base_corrente + (mt_rand(-5, 5)/50), 0, 15);
+            $rtf['corrente_dc_b'] = clamp($base_corrente * 0.95 + (mt_rand(-5, 5)/50), 0, 15);
+            $rtf['tensao_dc'] = clamp(54.6 + (mt_rand(-2, 2)/10), 52.0, 56.0);
+            $rtf['corrente_dc_total'] = round($rtf['corrente_dc_a'] + $rtf['corrente_dc_b'], 2);
+            $rtf['consumo_w'] = round(517 + ($bombas_ativas * 2200), 0);
+            
+            // Bateria solar: recarrega com sol alto, drena com muitas bombas ligadas
+            $solar_power = $uv * 12; // taxa de carga solar
+            $discharge = ($bombas_ativas * 8) + 2;
+            $rtf['bateria_pct'] = clamp($rtf['bateria_pct'] + (($solar_power - $discharge) * $elapsed / 300), 10, 100);
+            $rtf['temp_media'] = clamp(36 + ($bombas_ativas * 2) + ($uv * 0.4), 25, 60);
+        }
+        unset($rtf);
     }
 
     // ── Histórico ──

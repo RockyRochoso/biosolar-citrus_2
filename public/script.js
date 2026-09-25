@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   BioSolar Citrus — Dashboard v2 · Client Logic
-   Sparklines · Animated counters · Toast · Event log
+   BioSolar Citrus — Dashboard Industrial v3 (Client Logic)
+   Pomar & Irrigação + Suficiência Energética & Retificadoras (NOC)
    ═══════════════════════════════════════════════════════════ */
 
 const POLL_MS = 2000;
@@ -10,6 +10,13 @@ const GAUGE_CIRCUMFERENCE = 2 * Math.PI * 66; // ≈ 414.69
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
+// Views & Navigation
+const tabBtnPomar    = $('#tab-btn-pomar');
+const tabBtnEnergia  = $('#tab-btn-energia');
+const viewPomar      = $('#view-pomar');
+const viewEnergia    = $('#view-energia');
+
+// Agro Elements
 const talhoesEl     = $('#talhoes');
 const banner        = $('#emergency-banner');
 const clockEl       = $('#clock');
@@ -22,13 +29,37 @@ const connStatus    = $('#conn-status');
 const connTextEl    = connStatus.querySelector('.conn-text');
 const resSparkline  = $('#reservoir-sparkline');
 
+// NOC Elements
+const selectRetificadora = $('#select-retificadora');
+const btnToggleFalha     = $('#btn-toggle-falha');
+const zabbixListEl       = $('#zabbix-problems-list');
+const zabbixCountBadge   = $('#zabbix-count-badge');
+
 // ── State ─────────────────────────────────────────────────
-let bloqueioAtivo   = false;
-let pending         = new Set();
-let prevValues      = {};
-let lastLogLength   = 0;
-let isOnline        = false;
-let firstLoad       = true;
+let bloqueioAtivo     = false;
+let pending           = new Set();
+let isOnline          = false;
+let firstLoad         = true;
+let currentRetificadora = 'CPN-RTF-SMU02B';
+let latestTelemetria  = null;
+
+// ═══════════════════════════════════════════════════════════
+//  TAB NAVIGATION
+// ═══════════════════════════════════════════════════════════
+tabBtnPomar.addEventListener('click', () => {
+  tabBtnPomar.classList.add('active');
+  tabBtnEnergia.classList.remove('active');
+  viewPomar.classList.add('active');
+  viewEnergia.classList.remove('active');
+});
+
+tabBtnEnergia.addEventListener('click', () => {
+  tabBtnEnergia.classList.add('active');
+  tabBtnPomar.classList.remove('active');
+  viewEnergia.classList.add('active');
+  viewPomar.classList.remove('active');
+  if (latestTelemetria) renderNOC(latestTelemetria);
+});
 
 // ═══════════════════════════════════════════════════════════
 //  TOAST NOTIFICATION SYSTEM
@@ -48,21 +79,27 @@ function showToast(msg, type = 'info') {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  ANIMATED NUMBER TRANSITION
+//  COLOR & FORMAT HELPERS
 // ═══════════════════════════════════════════════════════════
-function animateValue(el, to, duration = 600, decimals = 1, suffix = '') {
-  const from = parseFloat(el.dataset.current || '0') || 0;
-  if (Math.abs(from - to) < 0.05) { el.textContent = to.toFixed(decimals) + suffix; el.dataset.current = to; return; }
-  const start = performance.now();
-  const step = (now) => {
-    const t = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
-    const val = from + (to - from) * eased;
-    el.textContent = val.toFixed(decimals) + suffix;
-    if (t < 1) requestAnimationFrame(step);
-    else el.dataset.current = to;
-  };
-  requestAnimationFrame(step);
+function levelColor(pct) {
+  if (pct < 15) return '#ef4444'; // red
+  if (pct < 40) return '#f59e0b'; // yellow
+  return '#10b981';               // green
+}
+
+function fruitEmoji(nome) {
+  const n = (nome || '').toLowerCase();
+  if (n.includes('limão') || n.includes('limao')) return '🍋';
+  if (n.includes('tangerina') || n.includes('mexerica') || n.includes('ponkan')) return '🍊';
+  return '🍊';
+}
+
+function updateGauge(pct) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const offset = GAUGE_CIRCUMFERENCE * (1 - clamped / 100);
+  gaugeArc.style.strokeDashoffset = offset;
+  gaugeArc.style.stroke = levelColor(clamped);
+  gaugeText.textContent = `${clamped.toFixed(1)}%`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -75,7 +112,6 @@ function drawSparkline(canvas, data, color, fillAlpha = '30') {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
 
-  // Adjust for DPR only once or on resize
   if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
     canvas.width = w * dpr;
     canvas.height = h * dpr;
@@ -109,7 +145,6 @@ function drawSparkline(canvas, data, color, fillAlpha = '30') {
     ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, xm, ym);
   }
   ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-  // Close fill path
   ctx.lineTo(pts[pts.length - 1].x, h);
   ctx.lineTo(pts[0].x, h);
   ctx.closePath();
@@ -124,146 +159,112 @@ function drawSparkline(canvas, data, color, fillAlpha = '30') {
     const ym = (pts[i - 1].y + pts[i].y) / 2;
     ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, xm, ym);
   }
-  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  NOC INDUSTRIAL CHARTS (Grafana/Zabbix Style)
+// ═══════════════════════════════════════════════════════════
+function drawNOCChart(canvasId, series, color = '#22c55e', unit = '', minY = null, maxY = null) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 360;
+  const h = canvas.clientHeight || 110;
+
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  // Background Grid Lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+
+  // Horizontal grid
+  const gridRows = 4;
+  for (let i = 1; i < gridRows; i++) {
+    const y = (h / gridRows) * i;
+    ctx.beginPath();
+    ctx.moveTo(30, y);
+    ctx.lineTo(w - 10, y);
+    ctx.stroke();
+  }
+  // Vertical grid
+  const gridCols = 5;
+  for (let i = 1; i < gridCols; i++) {
+    const x = 30 + ((w - 40) / gridCols) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, 10);
+    ctx.lineTo(x, h - 18);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Mock series if empty
+  const data = (series && series.length >= 2) ? series : [0, 0, 0, 0, 0];
+  const autoMin = minY !== null ? minY : Math.min(...data) * 0.95;
+  const autoMax = maxY !== null ? maxY : Math.max(...data) * 1.05;
+  const range = (autoMax - autoMin) || 1;
+
+  const padLeft = 32;
+  const padRight = 10;
+  const padTop = 10;
+  const padBottom = 20;
+  const plotW = w - padLeft - padRight;
+  const plotH = h - padTop - padBottom;
+
+  // Y-axis Labels
+  ctx.fillStyle = '#6e7681';
+  ctx.font = '9px "JetBrains Mono", monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(autoMax.toFixed(0) + unit, padLeft - 4, padTop + 8);
+  ctx.fillText(autoMin.toFixed(0) + unit, padLeft - 4, padTop + plotH);
+
+  // X-axis Time Labels
+  ctx.textAlign = 'center';
+  ctx.fillText('09:00', padLeft + 10, h - 4);
+  ctx.fillText('10:30', padLeft + plotW / 2, h - 4);
+  ctx.fillText('11:30', padLeft + plotW - 10, h - 4);
+
+  // Points
+  const stepX = plotW / (data.length - 1);
+  const pts = data.map((v, i) => ({
+    x: padLeft + i * stepX,
+    y: padTop + (1 - (v - autoMin) / range) * plotH,
+  }));
+
+  // Line
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    const xm = (pts[i - 1].x + pts[i].x) / 2;
+    const ym = (pts[i - 1].y + pts[i].y) / 2;
+    ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, xm, ym);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
   ctx.stroke();
 
-  // End dot
-  const last = pts[pts.length - 1];
+  // Dots on last point
+  const lastPt = pts[pts.length - 1];
   ctx.beginPath();
-  ctx.arc(last.x, last.y, 3.5, 0, Math.PI * 2);
+  ctx.arc(lastPt.x, lastPt.y, 3.5, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
-  ctx.beginPath();
-  ctx.arc(last.x, last.y, 6, 0, Math.PI * 2);
-  ctx.fillStyle = color + '25';
-  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 // ═══════════════════════════════════════════════════════════
-//  COLOR HELPERS
-// ═══════════════════════════════════════════════════════════
-function levelColor(pct) {
-  if (pct < 25) return '#ef4444';
-  if (pct < 50) return '#f59e0b';
-  return '#10b981';
-}
-
-function fruitEmoji(nome) {
-  if (nome.includes('Limão') || nome.includes('Lima')) return '🍋';
-  return '🍊';
-}
-
-const WEATHER_MAP = {
-  ensolarado: { icon: '☀️', label: 'Ensolarado' },
-  nublado:    { icon: '⛅', label: 'Parcialmente Nublado' },
-  chuva:      { icon: '🌧️', label: 'Chuva' },
-  tempestade: { icon: '⛈️', label: 'Tempestade' },
-};
-
-// ═══════════════════════════════════════════════════════════
-//  CIRCULAR GAUGE
-// ═══════════════════════════════════════════════════════════
-function updateGauge(pct) {
-  const offset = GAUGE_CIRCUMFERENCE * (1 - pct / 100);
-  gaugeArc.style.strokeDashoffset = offset;
-  // Color transition based on level
-  const color = levelColor(pct);
-  gaugeArc.style.stroke = color;
-  gaugeText.textContent = pct.toFixed(0) + '%';
-  gaugeText.style.fill = color;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  WEATHER
-// ═══════════════════════════════════════════════════════════
-function renderWeather(clima) {
-  const w = WEATHER_MAP[clima.condicao] || WEATHER_MAP.ensolarado;
-  $('#weather-icon').textContent = w.icon;
-  $('#weather-condition').textContent = w.label;
-  $('#w-temp').textContent = clima.temperatura.toFixed(1) + '°C';
-  $('#w-vento').textContent = clima.vento_kmh.toFixed(0) + ' km/h';
-  $('#w-uv').textContent = clima.uv;
-  $('#w-chuva').textContent = clima.chance_chuva.toFixed(0) + '%';
-}
-
-// ═══════════════════════════════════════════════════════════
-//  KPIs
-// ═══════════════════════════════════════════════════════════
-function renderKPIs(data) {
-  // Bombas ativas
-  let bombas = 0;
-  Object.values(data.talhoes).forEach(t => { if (t.bomba) bombas++; });
-  const kpiBombas = $('#kpi-bombas');
-  kpiBombas.textContent = bombas;
-  kpiBombas.style.color = bombas > 0 ? '#22d3ee' : '#64748b';
-
-  // Consumo
-  animateValue($('#kpi-consumo'), data.energia.consumo_acumulado_kwh, 500, 2, '');
-
-  // Economia
-  const econEl = $('#kpi-economia');
-  econEl.textContent = data.energia.economia_estimada_pct.toFixed(0) + '%';
-  econEl.style.color = data.energia.economia_estimada_pct > 30 ? '#10b981' : '#f59e0b';
-
-  // Uptime
-  const secs = data.energia.uptime_s;
-  const hrs = Math.floor(secs / 3600);
-  const mins = Math.floor((secs % 3600) / 60);
-  const ss = Math.floor(secs % 60);
-  $('#kpi-uptime').textContent =
-    hrs > 0 ? `${hrs}h${String(mins).padStart(2,'0')}m` : `${mins}:${String(ss).padStart(2,'0')}`;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  EVENT LOG
-// ═══════════════════════════════════════════════════════════
-function renderEventLog(logs) {
-  if (!logs || logs.length === 0) {
-    logCountEl.textContent = '0 eventos';
-    eventLogEl.innerHTML = '<div class="log-empty">Aguardando eventos do sistema…</div>';
-    lastLogLength = 0;
-    return;
-  }
-
-  // Notify for new events (skip first load)
-  if (!firstLoad && logs.length > 0 && logs.length !== lastLogLength) {
-    const newest = logs[0];
-    const isError = ['emergencia', 'critico'].includes(newest.tipo);
-    showToast(newest.msg, isError ? 'warning' : 'info');
-  }
-  lastLogLength = logs.length;
-
-  logCountEl.textContent = logs.length + ' evento' + (logs.length !== 1 ? 's' : '');
-
-  eventLogEl.innerHTML = logs.map(ev =>
-    `<div class="log-entry ${ev.tipo}">
-      <span class="log-ts">${ev.ts}</span>
-      <span class="log-msg">${ev.msg}</span>
-    </div>`
-  ).join('');
-}
-
-// ═══════════════════════════════════════════════════════════
-//  CONNECTION STATUS
-// ═══════════════════════════════════════════════════════════
-function setConnection(online) {
-  if (online === isOnline && !firstLoad) return;
-  isOnline = online;
-  connStatus.className = 'conn-status ' + (online ? 'online' : 'offline');
-  connTextEl.textContent = online ? 'Online' : 'Offline';
-  if (!firstLoad) {
-    showToast(
-      online ? 'Conexão restabelecida' : 'Conexão perdida com o servidor',
-      online ? 'success' : 'error'
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-//  TALHÕES CARDS
+//  TALHÕES CARDS (Com Excluir & Trocar Imagem)
 // ═══════════════════════════════════════════════════════════
 function renderTalhoes(talhoes, historico) {
   talhoesEl.innerHTML = '';
@@ -278,7 +279,7 @@ function renderTalhoes(talhoes, historico) {
       + (isIrrigating ? ' irrigating' : '');
 
     // Badge
-    let badgeClass, badgeLabel, dotColor;
+    let badgeClass, badgeLabel;
     if (t.critico) {
       badgeClass = 'critico'; badgeLabel = 'Irrigação Crítica (auto)';
     } else if (t.bomba) {
@@ -287,28 +288,43 @@ function renderTalhoes(talhoes, historico) {
       badgeClass = 'normal'; badgeLabel = 'Normal';
     }
 
-    // Calculate hue rotation based on humidity for NDVI effect:
-    // If umidade is high (e.g. > 80%), rotation is 0 (stays green).
-    // If umidade is low (e.g. < 30%), rotation is ~-120deg (turns red).
+    // NDVI color effect
     const lossPct = Math.max(0, 100 - t.umidade);
-    // Exponential or linear mapping. Let's do linear mapped to -130deg.
     const hueDeg = -140 * (lossPct / 100);
-    // Add some saturation boost as it gets drier to make the red pop.
     const satBoost = 100 + (lossPct / 100) * 100;
+
+    // Image source (custom base64/url or default)
+    const imgSrc = t.imagem || `talhao_${id}.png`;
 
     card.innerHTML = `
       <div class="talhao-header">
-        <span class="talhao-name">${t.nome}</span>
-        <span class="talhao-fruit">${fruitEmoji(t.nome)}</span>
+        <div class="talhao-title-wrap">
+          <span class="talhao-fruit">${fruitEmoji(t.nome)}</span>
+          <span class="talhao-name">${t.nome}</span>
+        </div>
+        <div class="talhao-actions">
+          <button class="btn-talhao-action btn-edit-img" data-id="${id}" data-nome="${t.nome}" data-img="${imgSrc}" title="Alterar imagem/planta satélite">
+            🛰️ Foto
+          </button>
+          <button class="btn-talhao-action delete btn-del-talhao" data-id="${id}" data-nome="${t.nome}" title="Excluir este talhão">
+            🗑️
+          </button>
+        </div>
       </div>
+
       <div class="talhao-image-wrap">
-        <img src="talhao_${id}.png" class="talhao-img" alt="NDVI do ${t.nome}" style="filter: hue-rotate(${hueDeg}deg) saturate(${satBoost}%)">
+        <img src="${imgSrc}" class="talhao-img" alt="NDVI do ${t.nome}" style="filter: hue-rotate(${hueDeg}deg) saturate(${satBoost}%)" onerror="this.src='talhao_1.png'">
+        <button class="talhao-img-overlay-btn btn-edit-img" data-id="${id}" data-nome="${t.nome}" data-img="${imgSrc}">
+          📷 Trocar Imagem
+        </button>
       </div>
+
       <div class="talhao-umidade" style="color:${levelColor(t.umidade)}" data-current="${t.umidade}">
         ${t.umidade.toFixed(1)}%
       </div>
-      <canvas class="talhao-sparkline" data-talhao="${id}" width="260" height="40"></canvas>
+      <canvas class="talhao-sparkline" data-talhao="${id}" width="260" height="38"></canvas>
       <span class="badge ${badgeClass}"><span class="dot"></span>${badgeLabel}</span>
+
       <div class="switch-row">
         <span class="switch-label">Aspersor</span>
         <button class="switch ${t.bomba ? 'on' : ''} ${bloqueioAtivo ? 'disabled' : ''}"
@@ -329,10 +345,123 @@ function renderTalhoes(talhoes, historico) {
   talhoesEl.querySelectorAll('.switch').forEach(btn => {
     btn.addEventListener('click', onToggle);
   });
+
+  // Attach delete handlers
+  talhoesEl.querySelectorAll('.btn-del-talhao').forEach(btn => {
+    btn.addEventListener('click', onDeleteTalhao);
+  });
+
+  // Attach edit image handlers
+  talhoesEl.querySelectorAll('.btn-edit-img').forEach(btn => {
+    btn.addEventListener('click', onOpenImageModal);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
-//  TOGGLE HANDLER
+//  DELETE TALHÃO HANDLER
+// ═══════════════════════════════════════════════════════════
+async function onDeleteTalhao(e) {
+  e.stopPropagation();
+  const id = e.currentTarget.dataset.id;
+  const nome = e.currentTarget.dataset.nome || `Talhão ${id}`;
+
+  if (!confirm(`Tem certeza que deseja excluir o "${nome}"?`)) return;
+
+  try {
+    const res = await fetch('/talhao_delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ talhao: id })
+    });
+    if (res.ok) {
+      showToast(`"${nome}" excluído com sucesso.`, 'success');
+      fetchTelemetria();
+    } else {
+      const err = await res.json();
+      showToast(err.erro || 'Erro ao excluir talhão.', 'error');
+    }
+  } catch (err) {
+    showToast('Falha na comunicação com o servidor.', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UPDATE IMAGE MODAL & HANDLER
+// ═══════════════════════════════════════════════════════════
+const modalImagemTalhao   = $('#modal-imagem-talhao');
+const modalImgTalhaoNome  = $('#modal-img-talhao-nome');
+const modalImgTalhaoId    = $('#modal-img-talhao-id');
+const inputUpdateFile     = $('#input-update-file');
+const inputUpdateUrl      = $('#input-update-url');
+const imgPreview          = $('#img-preview');
+const btnSaveImagemTalhao = $('#btn-save-imagem-talhao');
+
+function onOpenImageModal(e) {
+  e.stopPropagation();
+  const id = e.currentTarget.dataset.id;
+  const nome = e.currentTarget.dataset.nome;
+  const currentImg = e.currentTarget.dataset.img;
+
+  modalImgTalhaoId.value = id;
+  modalImgTalhaoNome.textContent = `Talhão: ${nome}`;
+  imgPreview.src = currentImg || 'talhao_1.png';
+  inputUpdateUrl.value = currentImg && currentImg.startsWith('http') ? currentImg : '';
+  inputUpdateFile.value = '';
+
+  modalOverlay.classList.remove('hidden');
+  modalImagemTalhao.classList.remove('hidden');
+}
+
+// Live preview when local file is chosen
+inputUpdateFile.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      imgPreview.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// Live preview when URL is typed
+inputUpdateUrl.addEventListener('input', (e) => {
+  const url = e.target.value.trim();
+  if (url) {
+    imgPreview.src = url;
+  }
+});
+
+btnSaveImagemTalhao.addEventListener('click', async () => {
+  const id = modalImgTalhaoId.value;
+  let finalImg = imgPreview.src;
+
+  if (!finalImg) {
+    showToast('Selecione uma imagem ou informe uma URL.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await fetch('/talhao_update_image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ talhao: id, imagem: finalImg })
+    });
+    if (res.ok) {
+      showToast('Imagem do talhão atualizada com sucesso!', 'success');
+      closeModals();
+      fetchTelemetria();
+    } else {
+      const err = await res.json();
+      showToast(err.erro || 'Erro ao atualizar imagem.', 'error');
+    }
+  } catch (err) {
+    showToast('Falha na comunicação com o servidor.', 'error');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  TOGGLE PUMP HANDLER
 // ═══════════════════════════════════════════════════════════
 async function onToggle(e) {
   if (bloqueioAtivo) {
@@ -371,12 +500,185 @@ async function onToggle(e) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  NOC RENDERING (Suficiência Energética & Retificadoras)
+// ═══════════════════════════════════════════════════════════
+function renderNOC(data) {
+  const retificadoras = data.retificadoras || {};
+  const rtf = retificadoras[currentRetificadora] || Object.values(retificadoras)[0];
+  if (!rtf) return;
+
+  const isUp = rtf.status === 'UP';
+  const color = isUp ? '#22c55e' : '#ef4444';
+
+  // Rectifiers Operational Status
+  const r1 = $('#val-rectifier1');
+  const r2 = $('#val-rectifier2');
+  const r3 = $('#val-rectifier3');
+  const c1 = $('#card-rectifier1');
+  const c2 = $('#card-rectifier2');
+  const c3 = $('#card-rectifier3');
+
+  const st1 = rtf.modulos?.rectifier1 || rtf.status || 'UP';
+  const st2 = rtf.modulos?.rectifier2 || rtf.status || 'UP';
+  const st3 = rtf.modulos?.rectifier3 || rtf.status || 'UP';
+
+  r1.textContent = st1;
+  c1.className = `noc-status-card ${st1 === 'OFF' ? 'off' : ''}`;
+
+  r2.textContent = st2;
+  c2.className = `noc-status-card ${st2 === 'OFF' ? 'off' : ''}`;
+
+  if (r3 && c3) {
+    r3.textContent = st3;
+    c3.className = `noc-status-card ${st3 === 'OFF' ? 'off' : ''}`;
+  }
+
+  // Metrics
+  $('#noc-temp-media').textContent = `${(rtf.temp_media || 38).toFixed(0)} °C`;
+  $('#noc-uptime-weeks').textContent = rtf.tempo_operacao || '14.3 weeks';
+  $('#noc-latency').textContent = rtf.latencia || '946 µs';
+
+  // Labels
+  $('#val-last-tensao-ac-a').textContent = `${rtf.tensao_ac_a?.toFixed(0) || 0} V`;
+  $('#leg-tensao-ac-a').textContent = `${rtf.tensao_ac_a?.toFixed(0) || 0} V`;
+
+  $('#val-last-corrente-dc-a').textContent = `${rtf.corrente_dc_a?.toFixed(2) || '0.00'} A`;
+  $('#leg-corrente-dc-a').textContent = `${rtf.corrente_dc_a?.toFixed(2) || '0.00'} A`;
+
+  $('#val-last-tensao-ac-b').textContent = `${rtf.tensao_ac_b?.toFixed(0) || 0} V`;
+  $('#leg-tensao-ac-b').textContent = `${rtf.tensao_ac_b?.toFixed(0) || 0} V`;
+
+  $('#val-last-corrente-dc-b').textContent = `${rtf.corrente_dc_b?.toFixed(2) || '0.00'} A`;
+  $('#leg-corrente-dc-b').textContent = `${rtf.corrente_dc_b?.toFixed(2) || '0.00'} A`;
+
+  $('#val-last-bateria').textContent = `${rtf.bateria_pct?.toFixed(0) || 100}%`;
+  $('#leg-bateria').textContent = `${rtf.bateria_pct?.toFixed(0) || 100}%`;
+
+  $('#val-last-consumo').textContent = `${rtf.consumo_w?.toFixed(0) || 0} W`;
+  $('#leg-consumo').textContent = `${rtf.consumo_w?.toFixed(0) || 0} W`;
+
+  $('#val-last-tensao-dc').textContent = `${rtf.tensao_dc?.toFixed(1) || '54.6'} V`;
+  $('#leg-tensao-dc').textContent = `${rtf.tensao_dc?.toFixed(1) || '54.6'} V`;
+
+  $('#val-last-corrente-dc-tot').textContent = `${rtf.corrente_dc_total?.toFixed(2) || '4.80'} A`;
+  $('#leg-corrente-dc-tot').textContent = `${rtf.corrente_dc_total?.toFixed(2) || '4.80'} A`;
+
+  // Draw 8 Charts with series
+  const hEnergia = data.historico?.energia || {};
+  drawNOCChart('chart-tensao-ac-a', hEnergia.tensao_ac_a || [218, 222, 224, 220, 224], color, 'V', 200, 240);
+  drawNOCChart('chart-corrente-dc-a', hEnergia.corrente_dc_a || [3.0, 3.15, 3.3, 3.2, 3.3], color, 'A', 2.8, 3.6);
+  drawNOCChart('chart-tensao-ac-b', hEnergia.tensao_ac_b || [218, 221, 225, 219, 224], color, 'V', 200, 240);
+  drawNOCChart('chart-corrente-dc-b', hEnergia.corrente_dc_b || [3.0, 3.2, 3.1, 3.15, 3.1], color, 'A', 2.8, 3.6);
+  drawNOCChart('chart-bateria', hEnergia.bateria || [100, 100, 99, 99, 100], color, '%', 0, 100);
+  drawNOCChart('chart-consumo-w', hEnergia.consumo_w || [517, 517, 518, 517, 517], color, 'W', 0, 3000);
+  drawNOCChart('chart-tensao-dc', hEnergia.tensao_dc || [54.6, 54.6, 54.5, 54.6, 54.6], color, 'V', 45, 60);
+  drawNOCChart('chart-corrente-dc-tot', hEnergia.corrente_dc || [4.8, 4.85, 4.8, 4.82, 4.8], color, 'A', 4.0, 6.0);
+
+  // Render Zabbix Problems List
+  renderZabbixProblems(data.zabbix_problems || []);
+}
+
+function renderZabbixProblems(problems) {
+  zabbixListEl.innerHTML = '';
+  zabbixCountBadge.textContent = `${problems.length} ativos`;
+
+  problems.forEach(p => {
+    const card = document.createElement('div');
+    card.className = `zabbix-card ${p.tipo || 'info'}`;
+    const icon = p.icon === 'heart-crack' ? '💔' : (p.icon === 'battery-charging' ? '🔋' : '💙');
+
+    card.innerHTML = `
+      <div class="zabbix-icon-wrap">${icon}</div>
+      <div class="zabbix-info">
+        <div class="zabbix-title">${p.titulo}</div>
+        <div class="zabbix-eq">${p.equipamento}</div>
+        <div class="zabbix-time">${p.tempo}</div>
+      </div>
+    `;
+    zabbixListEl.appendChild(card);
+  });
+}
+
+// Retificadora selector change
+selectRetificadora.addEventListener('change', (e) => {
+  currentRetificadora = e.target.value;
+  if (latestTelemetria) renderNOC(latestTelemetria);
+});
+
+// Toggle Fault / Status
+btnToggleFalha.addEventListener('click', async () => {
+  const currentRtf = latestTelemetria?.retificadoras?.[currentRetificadora];
+  const newStatus = (currentRtf?.status === 'UP') ? 'OFF' : 'UP';
+  try {
+    const res = await fetch('/retificadora_toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ retificadora: currentRetificadora, status: newStatus })
+    });
+    if (res.ok) {
+      showToast(`Status da ${currentRetificadora} alterado para ${newStatus}`, 'info');
+      fetchTelemetria();
+    }
+  } catch (e) {
+    showToast('Erro ao alternar status da retificadora.', 'error');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  KPIs & WEATHER
+// ═══════════════════════════════════════════════════════════
+function renderKPIs(data) {
+  let bombasAtivas = 0;
+  if (data.talhoes) {
+    Object.values(data.talhoes).forEach(t => { if (t.bomba) bombasAtivas++; });
+  }
+  $('#kpi-bombas').textContent = bombasAtivas;
+
+  if (data.energia) {
+    $('#kpi-consumo').textContent = (data.energia.consumo_acumulado_kwh || 0).toFixed(2);
+    $('#kpi-economia').textContent = `${data.energia.economia_estimada_pct || 0}%`;
+
+    const uptimeS = data.energia.uptime_s || 0;
+    const m = Math.floor(uptimeS / 60);
+    const s = Math.floor(uptimeS % 60);
+    $('#kpi-uptime').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+}
+
+function renderWeather(clima) {
+  if (!clima) return;
+  const ICONS = { ensolarado: '☀️', nublado: '⛅', chuva: '🌧️', tempestade: '⛈️' };
+  $('#weather-icon').textContent = ICONS[clima.condicao] || '☀️';
+  $('#weather-condition').textContent = clima.condicao ? clima.condicao.toUpperCase() : 'ENSOLARADO';
+  $('#w-temp').textContent = `${(clima.temperatura || 0).toFixed(1)}°C`;
+  $('#w-vento').textContent = `${(clima.vento_kmh || 0).toFixed(1)} km/h`;
+  $('#w-uv').textContent = clima.uv || 0;
+  $('#w-chuva').textContent = `${Math.round(clima.chance_chuva || 0)}%`;
+}
+
+function renderEventLog(logs) {
+  if (!logs || !logs.length) {
+    eventLogEl.innerHTML = '<div class="log-empty">Aguardando eventos do sistema…</div>';
+    logCountEl.textContent = '0 eventos';
+    return;
+  }
+  logCountEl.textContent = `${logs.length} eventos`;
+  eventLogEl.innerHTML = logs.map(l => `
+    <div class="log-entry ${l.tipo}">
+      <span class="log-ts">${l.ts}</span>
+      <span class="log-msg">${l.msg}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
 //  MAIN POLL
 // ═══════════════════════════════════════════════════════════
 async function fetchTelemetria() {
   try {
     const res = await fetch('/telemetria');
     const data = await res.json();
+    latestTelemetria = data;
 
     setConnection(true);
 
@@ -389,12 +691,15 @@ async function fetchTelemetria() {
     renderKPIs(data);
     renderEventLog(data.log_eventos);
 
-    // Reservoir sparkline
+    // Sparkline reservatorio
     if (data.historico && data.historico.reservatorio) {
       drawSparkline(resSparkline, data.historico.reservatorio, levelColor(data.reservatorio));
     }
 
-    // Atualizar inputs da modal com base no state (apenas se for primeira carga para não sobreescrever durante digitação)
+    // Render NOC dashboard
+    renderNOC(data);
+
+    // Populate modal energia inputs on first load
     if (firstLoad && data.energia) {
       if (data.energia.baterias) $('#input-baterias').value = data.energia.baterias;
       if (data.energia.tempo_descarga) $('#input-descarga').value = data.energia.tempo_descarga;
@@ -408,41 +713,25 @@ async function fetchTelemetria() {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-//  RESET
-// ═══════════════════════════════════════════════════════════
-$('#btn-reset').addEventListener('click', async () => {
-  if (!confirm('Reiniciar toda a simulação? Todos os dados serão perdidos.')) return;
-  try {
-    const res = await fetch('/reset', { method: 'POST' });
-    if (res.ok) {
-      showToast('Simulação reiniciada com sucesso.', 'success');
-      lastLogLength = 0;
-      fetchTelemetria();
-    }
-  } catch (err) {
-    showToast('Erro ao reiniciar simulação.', 'error');
-  }
-});
-
-// ═══════════════════════════════════════════════════════════
-//  CLOCK
-// ═══════════════════════════════════════════════════════════
-function tickClock() {
-  clockEl.textContent = new Date().toLocaleTimeString('pt-BR');
+function setConnection(online) {
+  if (online === isOnline && !firstLoad) return;
+  isOnline = online;
+  connStatus.className = 'conn-status ' + (online ? 'online' : 'offline');
+  connTextEl.textContent = online ? 'Online' : 'Offline';
 }
 
 // ═══════════════════════════════════════════════════════════
-//  MODALS E EVENTOS NOVOS
+//  MODALS & ACTIONS
 // ═══════════════════════════════════════════════════════════
 const modalOverlay = $('#modal-overlay');
 const modalEnergia = $('#modal-energia');
-const modalTalhao = $('#modal-talhao');
+const modalTalhao  = $('#modal-talhao');
 
 const closeModals = () => {
   modalOverlay.classList.add('hidden');
   modalEnergia.classList.add('hidden');
   modalTalhao.classList.add('hidden');
+  modalImagemTalhao.classList.add('hidden');
 };
 
 $$('.modal-close').forEach(btn => btn.addEventListener('click', closeModals));
@@ -458,6 +747,7 @@ $('#btn-add-talhao').addEventListener('click', () => {
   modalTalhao.classList.remove('hidden');
 });
 
+// Save Energy Config
 $('#btn-save-energia').addEventListener('click', async () => {
   const data = {
     baterias: parseInt($('#input-baterias').value),
@@ -480,24 +770,62 @@ $('#btn-save-energia').addEventListener('click', async () => {
   }
 });
 
+// Add New Talhão (with optional Image)
 $('#btn-save-talhao').addEventListener('click', async () => {
   const nome = $('#input-talhao-nome').value.trim() || 'Novo Talhão';
-  try {
-    const res = await fetch('/talhao_add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nome })
-    });
-    if (res.ok) {
-      showToast('Talhão adicionado com sucesso!', 'success');
-      $('#input-talhao-nome').value = '';
-      closeModals();
-      fetchTelemetria();
+  const fileInput = $('#input-talhao-file');
+  const urlInput = $('#input-talhao-img-url').value.trim();
+
+  let imagem = urlInput || null;
+
+  const sendAddRequest = async (imgData) => {
+    try {
+      const res = await fetch('/talhao_add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, imagem: imgData })
+      });
+      if (res.ok) {
+        showToast('Novo talhão adicionado com sucesso!', 'success');
+        $('#input-talhao-nome').value = '';
+        $('#input-talhao-file').value = '';
+        $('#input-talhao-img-url').value = '';
+        closeModals();
+        fetchTelemetria();
+      }
+    } catch(e) {
+      showToast('Erro ao adicionar talhão.', 'error');
     }
-  } catch(e) {
-    showToast('Erro ao adicionar talhão.', 'error');
+  };
+
+  if (fileInput.files && fileInput.files[0]) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      sendAddRequest(evt.target.result);
+    };
+    reader.readAsDataURL(fileInput.files[0]);
+  } else {
+    sendAddRequest(imagem);
   }
 });
+
+// Reset simulation
+$('#btn-reset').addEventListener('click', async () => {
+  if (!confirm('Reiniciar toda a simulação? Todos os dados serão restaurados para os padrões de fábrica.')) return;
+  try {
+    const res = await fetch('/reset', { method: 'POST' });
+    if (res.ok) {
+      showToast('Simulação reiniciada com sucesso.', 'success');
+      fetchTelemetria();
+    }
+  } catch (err) {
+    showToast('Erro ao reiniciar simulação.', 'error');
+  }
+});
+
+function tickClock() {
+  clockEl.textContent = new Date().toLocaleTimeString('pt-BR');
+}
 
 // ═══════════════════════════════════════════════════════════
 //  INIT

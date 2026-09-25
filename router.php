@@ -32,4 +32,19 @@ if ($uri === '/talhao_add' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     return true;
 }
 
+if ($uri === '/talhao_delete' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    require __DIR__ . '/api/talhao_delete.php';
+    return true;
+}
+
+if ($uri === '/talhao_update_image' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    require __DIR__ . '/api/talhao_update_image.php';
+    return true;
+}
+
+if ($uri === '/retificadora_toggle' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    require __DIR__ . '/api/retificadora_toggle.php';
+    return true;
+}
+
 return false; // servidor embutido serve os estáticos de /public

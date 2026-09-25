@@ -13,13 +13,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ids = array_keys($state['talhoes']);
     $next_id = empty($ids) ? 1 : max($ids) + 1;
     
+    $imagem = $input['imagem'] ?? "talhao_{$next_id}.png";
+    
     $state['talhoes'][(string)$next_id] = [
         'nome' => $nome,
         'umidade' => 100.0, // Começa cheio
         'bomba' => false,
-        'critico' => false
+        'critico' => false,
+        'imagem' => $imagem,
     ];
     $state['historico']['talhoes'][(string)$next_id] = array_fill(0, count($state['historico']['timestamps']), 100.0);
+
     
     add_log($state, 'info', "Novo talhão adicionado: " . $nome);
     

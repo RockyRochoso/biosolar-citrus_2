@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Painel de automação hidro-energética para pomares de citros — monitoramento em tempo real de irrigação, reservatório e condições climáticas.">
-  <title>BioSolar Citrus | Painel de Automação Agro</title>
+  <meta name="description" content="Painel de automação hidro-energética para pomares de citros — monitoramento em tempo real de irrigação, reservatório, condições climáticas e suficiência energética de retificadoras.">
+  <title>BioSolar Citrus | Automação & Suficiência Energética</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,9 +21,22 @@
       <span class="brand-icon">🍊</span>
       <div>
         <h1>BioSolar Citrus</h1>
-        <p class="brand-sub">Automação Hidro-Energética de Pomares de Citros</p>
+        <p class="brand-sub">Automação Hidro-Energética & NOC de Suficiência Solar</p>
       </div>
     </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button id="tab-btn-pomar" class="nav-tab active">
+        <span class="tab-icon">🌾</span>
+        <span>Pomar & Irrigação</span>
+      </button>
+      <button id="tab-btn-energia" class="nav-tab">
+        <span class="tab-icon">⚡</span>
+        <span>Suficiência Energética (NOC)</span>
+      </button>
+    </nav>
+
     <div class="topbar-right">
       <button id="btn-reset" class="btn-reset" title="Reiniciar simulação">↻ Reset</button>
       <div id="conn-status" class="conn-status">
@@ -40,164 +53,430 @@
     ⚠ BLOQUEIO DE EMERGÊNCIA ATIVO — reservatório abaixo do limite crítico. Todas as bombas foram desligadas.
   </div>
 
-  <!-- ═══ KPI Strip ═══ -->
-  <section class="kpi-strip" id="kpi-strip">
-    <div class="kpi">
-      <div class="kpi-icon">💧</div>
-      <div class="kpi-body">
-        <span class="kpi-value" id="kpi-bombas">0</span>
-        <span class="kpi-label">Bombas Ativas</span>
-      </div>
-    </div>
-    <div class="kpi" id="kpi-energia-btn" style="cursor: pointer;" title="Configurar Energia">
-      <div class="kpi-icon">⚡</div>
-      <div class="kpi-body">
-        <span class="kpi-value" id="kpi-consumo">0.00</span>
-        <span class="kpi-label">kWh Consumidos</span>
-      </div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-icon">🌱</div>
-      <div class="kpi-body">
-        <span class="kpi-value" id="kpi-economia">0%</span>
-        <span class="kpi-label">Economia Estimada</span>
-      </div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-icon">🕐</div>
-      <div class="kpi-body">
-        <span class="kpi-value" id="kpi-uptime">00:00</span>
-        <span class="kpi-label">Uptime do Sistema</span>
-      </div>
-    </div>
-  </section>
+  <!-- ═══════════════════════════════════════════════════════════
+       VIEW 1: POMAR & IRRIGAÇÃO
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="view-pomar" class="view-section active">
 
-  <!-- ═══ Main Dashboard ═══ -->
-  <main class="dashboard">
-
-    <!-- Left Sidebar -->
-    <aside class="sidebar">
-
-      <!-- Circular Gauge — Reservatório -->
-      <section class="card glass reservoir-card">
-        <h2>Reservatório Central</h2>
-        <div class="circular-gauge-wrap">
-          <svg class="circular-gauge" viewBox="0 0 160 160">
-            <defs>
-              <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#10b981"/>
-                <stop offset="100%" stop-color="#22d3ee"/>
-              </linearGradient>
-            </defs>
-            <circle class="gauge-track" cx="80" cy="80" r="66"/>
-            <circle id="gauge-arc" class="gauge-arc" cx="80" cy="80" r="66"
-                    stroke-dasharray="414.69" stroke-dashoffset="414.69"/>
-            <text id="gauge-text" class="gauge-text" x="80" y="78"
-                  text-anchor="middle" dominant-baseline="central">--%</text>
-            <text class="gauge-sub" x="80" y="100" text-anchor="middle">Nível</text>
-          </svg>
+    <!-- KPI Strip -->
+    <section class="kpi-strip" id="kpi-strip">
+      <div class="kpi">
+        <div class="kpi-icon">💧</div>
+        <div class="kpi-body">
+          <span class="kpi-value" id="kpi-bombas">0</span>
+          <span class="kpi-label">Bombas Ativas</span>
         </div>
-        <canvas id="reservoir-sparkline" class="sparkline-canvas" width="240" height="48"></canvas>
-        <p class="hint">Crítico &lt; 15% · Alerta &lt; 40%</p>
-      </section>
-
-      <!-- Weather Panel -->
-      <section class="card glass weather-card">
-        <h2>Condições Climáticas</h2>
-        <div class="weather-hero">
-          <span id="weather-icon" class="weather-icon-big">☀️</span>
-          <span id="weather-condition" class="weather-condition-text">Ensolarado</span>
+      </div>
+      <div class="kpi" id="kpi-energia-btn" style="cursor: pointer;" title="Configurar Parâmetros de Bateria">
+        <div class="kpi-icon">⚡</div>
+        <div class="kpi-body">
+          <span class="kpi-value" id="kpi-consumo">0.00</span>
+          <span class="kpi-label">kWh Consumidos</span>
         </div>
-        <div class="weather-grid">
-          <div class="weather-item">
-            <span class="wi-icon">🌡️</span>
-            <span class="wi-value" id="w-temp">--°C</span>
-            <span class="wi-label">Temperatura</span>
+      </div>
+      <div class="kpi">
+        <div class="kpi-icon">🌱</div>
+        <div class="kpi-body">
+          <span class="kpi-value" id="kpi-economia">0%</span>
+          <span class="kpi-label">Economia Estimada</span>
+        </div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-icon">🕐</div>
+        <div class="kpi-body">
+          <span class="kpi-value" id="kpi-uptime">00:00</span>
+          <span class="kpi-label">Uptime do Sistema</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Dashboard -->
+    <main class="dashboard">
+      <!-- Left Sidebar -->
+      <aside class="sidebar">
+        <!-- Circular Gauge — Reservatório -->
+        <section class="card glass reservoir-card">
+          <h2>Reservatório Central</h2>
+          <div class="circular-gauge-wrap">
+            <svg class="circular-gauge" viewBox="0 0 160 160">
+              <defs>
+                <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#10b981"/>
+                  <stop offset="100%" stop-color="#22d3ee"/>
+                </linearGradient>
+              </defs>
+              <circle class="gauge-track" cx="80" cy="80" r="66"/>
+              <circle id="gauge-arc" class="gauge-arc" cx="80" cy="80" r="66"
+                      stroke-dasharray="414.69" stroke-dashoffset="414.69"/>
+              <text id="gauge-text" class="gauge-text" x="80" y="78"
+                    text-anchor="middle" dominant-baseline="central">--%</text>
+              <text class="gauge-sub" x="80" y="100" text-anchor="middle">Nível</text>
+            </svg>
           </div>
-          <div class="weather-item">
-            <span class="wi-icon">💨</span>
-            <span class="wi-value" id="w-vento">-- km/h</span>
-            <span class="wi-label">Vento</span>
+          <canvas id="reservoir-sparkline" class="sparkline-canvas" width="240" height="48"></canvas>
+          <p class="hint">Crítico &lt; 15% · Alerta &lt; 40%</p>
+        </section>
+
+        <!-- Weather Panel -->
+        <section class="card glass weather-card">
+          <h2>Condições Climáticas</h2>
+          <div class="weather-hero">
+            <span id="weather-icon" class="weather-icon-big">☀️</span>
+            <span id="weather-condition" class="weather-condition-text">Ensolarado</span>
           </div>
-          <div class="weather-item">
-            <span class="wi-icon">☀️</span>
-            <span class="wi-value" id="w-uv">--</span>
-            <span class="wi-label">Índice UV</span>
+          <div class="weather-grid">
+            <div class="weather-item">
+              <span class="wi-icon">🌡️</span>
+              <span class="wi-value" id="w-temp">--°C</span>
+              <span class="wi-label">Temperatura</span>
+            </div>
+            <div class="weather-item">
+              <span class="wi-icon">💨</span>
+              <span class="wi-value" id="w-vento">-- km/h</span>
+              <span class="wi-label">Vento</span>
+            </div>
+            <div class="weather-item">
+              <span class="wi-icon">☀️</span>
+              <span class="wi-value" id="w-uv">--</span>
+              <span class="wi-label">Índice UV</span>
+            </div>
+            <div class="weather-item">
+              <span class="wi-icon">🌧️</span>
+              <span class="wi-value" id="w-chuva">--%</span>
+              <span class="wi-label">Chance Chuva</span>
+            </div>
           </div>
-          <div class="weather-item">
-            <span class="wi-icon">🌧️</span>
-            <span class="wi-value" id="w-chuva">--%</span>
-            <span class="wi-label">Chance Chuva</span>
+        </section>
+      </aside>
+
+      <!-- Right Content -->
+      <div class="main-content">
+        <!-- Talhões Section Header -->
+        <div class="section-header">
+          <div>
+            <h2>Talhões & Irrigação</h2>
+            <p class="section-subtitle">Monitoramento de umidade NDVI, controle individual de aspersores e imagens de satélite</p>
           </div>
+          <button id="btn-add-talhao" class="btn-action">+ Adicionar Talhão</button>
         </div>
-      </section>
-    </aside>
 
-    <!-- Right Content -->
-    <div class="main-content">
+        <section id="talhoes" class="talhoes"></section>
 
-      <!-- Talhões -->
-      <div class="section-header">
-        <h2>Talhões</h2>
-        <button id="btn-add-talhao" class="btn-action">+ Adicionar Talhão</button>
+        <!-- Event Log -->
+        <section class="card glass log-card">
+          <div class="log-header">
+            <h2>📋 Log de Eventos da Fazenda</h2>
+            <span class="log-badge" id="log-count">0 eventos</span>
+          </div>
+          <div id="event-log" class="event-log">
+            <div class="log-empty">Aguardando eventos do sistema…</div>
+          </div>
+        </section>
       </div>
-      <section id="talhoes" class="talhoes"></section>
+    </main>
+  </div>
 
-      <!-- Event Log -->
-      <section class="card glass log-card">
-        <div class="log-header">
-          <h2>📋 Log de Eventos</h2>
-          <span class="log-badge" id="log-count">0 eventos</span>
+  <!-- ═══════════════════════════════════════════════════════════
+       VIEW 2: SUFICIÊNCIA ENERGÉTICA & RETIFICADORAS (NOC / ZABBIX)
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="view-energia" class="view-section">
+    <!-- Sub-header Industrial NOC Bar -->
+    <div class="noc-top-bar">
+      <div class="noc-left">
+        <label class="noc-label">RETIFICADORA</label>
+        <select id="select-retificadora" class="noc-select">
+          <option value="CPN-RTF-SMU02B">CPN-RTF-SMU02B (Principal Solar)</option>
+          <option value="OUR-SJS-RTF-SMU11B">OUR-SJS-RTF-SMU11B (Backup / Setor Sul)</option>
+        </select>
+        <span class="noc-badge-dash">🎛 DASHBOARD</span>
+        <button id="btn-toggle-falha" class="btn-danger-outline" title="Simular ou restaurar falha nos retificadores">
+          ⚡ Alternar Status / Falha
+        </button>
+      </div>
+
+      <div class="noc-right">
+        <div class="noc-time-control">
+          <span class="noc-icon-nav">«</span>
+          <span class="noc-time-text">🕒 Últimas 3 horas</span>
+          <span class="noc-icon-nav">»</span>
+          <span class="noc-icon-nav">🔍</span>
         </div>
-        <div id="event-log" class="event-log">
-          <div class="log-empty">Aguardando eventos do sistema…</div>
+        <div class="noc-refresh">
+          <span class="noc-refresh-icon">🔄</span>
+          <span>Atualizar 1m</span>
         </div>
-      </section>
+        <button id="btn-compartilhar-noc" class="btn-noc-share">🔗 Compartilhar</button>
+      </div>
     </div>
-  </main>
+
+    <!-- NOC Main Layout -->
+    <div class="noc-dashboard-layout">
+      <!-- Left / Center NOC Metrics & Charts -->
+      <div class="noc-content-area">
+        
+        <!-- Status Operational Cards Top Row -->
+        <div class="noc-status-row">
+          <!-- Rectifier Status Cards -->
+          <div class="noc-status-card" id="card-rectifier1">
+            <div class="noc-sc-label">Status operacional Rectifier1</div>
+            <div class="noc-sc-value" id="val-rectifier1">UP</div>
+          </div>
+          <div class="noc-status-card" id="card-rectifier2">
+            <div class="noc-sc-label">Status operacional Rectifier2</div>
+            <div class="noc-sc-value" id="val-rectifier2">UP</div>
+          </div>
+          <div class="noc-status-card" id="card-rectifier3">
+            <div class="noc-sc-label">Status operacional Rectifier3</div>
+            <div class="noc-sc-value" id="val-rectifier3">UP</div>
+          </div>
+
+          <!-- Secondary Metric Cards -->
+          <div class="noc-metric-card">
+            <div class="noc-mc-label">Temp. Média</div>
+            <div class="noc-mc-val" id="noc-temp-media">38 °C</div>
+          </div>
+          <div class="noc-metric-card accent">
+            <div class="noc-mc-val big" id="noc-uptime-weeks">14.3 weeks</div>
+            <div class="noc-mc-label">Operação Contínua</div>
+          </div>
+          <div class="noc-metric-card nodata">
+            <div class="noc-mc-val green-text">No data</div>
+          </div>
+          <div class="noc-metric-card latency">
+            <div class="noc-mc-label">Latência</div>
+            <div class="noc-mc-val green-bg" id="noc-latency">946 µs</div>
+          </div>
+        </div>
+
+        <!-- Charts 2x4 Grid -->
+        <div class="noc-charts-grid">
+
+          <!-- Chart 1: Tensão AC - Módulo A -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">Tensão AC - Módulo A</span>
+              <span class="noc-ch-val" id="val-last-tensao-ac-a">224 V</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-tensao-ac-a" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Tensão de entrada do Rectifier1</span>
+              <span class="noc-leg-last" id="leg-tensao-ac-a">224 V</span>
+            </div>
+          </div>
+
+          <!-- Chart 2: CORRENTE DC - Módulo A -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">CORRENTE DC - Módulo A</span>
+              <span class="noc-ch-val" id="val-last-corrente-dc-a">3.30 A</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-corrente-dc-a" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Corrente Rectifier1</span>
+              <span class="noc-leg-last" id="leg-corrente-dc-a">3.30 A</span>
+            </div>
+          </div>
+
+          <!-- Chart 3: Tensão AC - Módulo B -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">Tensão AC - Módulo B</span>
+              <span class="noc-ch-val" id="val-last-tensao-ac-b">224 V</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-tensao-ac-b" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Tensão de entrada do Rectifier2</span>
+              <span class="noc-leg-last" id="leg-tensao-ac-b">224 V</span>
+            </div>
+          </div>
+
+          <!-- Chart 4: CORRENTE DC - Módulo B -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">CORRENTE DC - Módulo B</span>
+              <span class="noc-ch-val" id="val-last-corrente-dc-b">3.10 A</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-corrente-dc-b" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Corrente Rectifier2</span>
+              <span class="noc-leg-last" id="leg-corrente-dc-b">3.10 A</span>
+            </div>
+          </div>
+
+          <!-- Chart 5: % bateria -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">% bateria</span>
+              <span class="noc-ch-val" id="val-last-bateria">100%</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-bateria" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Nível de bateria restante %</span>
+              <span class="noc-leg-last" id="leg-bateria">100%</span>
+            </div>
+          </div>
+
+          <!-- Chart 6: Consumo (W) -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">Consumo (W) / DC Output Power</span>
+              <span class="noc-ch-val" id="val-last-consumo">517 W</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-consumo-w" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>DC Output Power</span>
+              <span class="noc-leg-last" id="leg-consumo">517 W</span>
+            </div>
+          </div>
+
+          <!-- Chart 7: TENSÃO DC -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">TENSÃO DC</span>
+              <span class="noc-ch-val" id="val-last-tensao-dc">54.6 V</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-tensao-dc" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Tensão total CC de saída</span>
+              <span class="noc-leg-last" id="leg-tensao-dc">54.6 V</span>
+            </div>
+          </div>
+
+          <!-- Chart 8: CORRENTE DC TOTAL -->
+          <div class="noc-chart-card">
+            <div class="noc-chart-header">
+              <span class="noc-ch-title">CORRENTE DC TOTAL</span>
+              <span class="noc-ch-val" id="val-last-corrente-dc-tot">4.80 A</span>
+            </div>
+            <div class="noc-canvas-wrap">
+              <canvas id="chart-corrente-dc-tot" width="380" height="150"></canvas>
+            </div>
+            <div class="noc-chart-legend">
+              <span class="noc-leg-line green"></span>
+              <span>Corrente total de saída</span>
+              <span class="noc-leg-last" id="leg-corrente-dc-tot">4.80 A</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right Column: ZABBIX PROBLEMS Panel -->
+      <aside class="zabbix-panel">
+        <div class="zabbix-header">
+          <h3>🚨 ZABBIX PROBLEMS</h3>
+          <span class="zabbix-count" id="zabbix-count-badge">5 ativos</span>
+        </div>
+        <div class="zabbix-list" id="zabbix-problems-list">
+          <!-- Dynamically populated -->
+        </div>
+      </aside>
+
+    </div>
+  </div>
 
   <!-- ═══ Footer ═══ -->
   <footer class="footer">
-    <p>Dados atualizados exclusivamente pelo servidor via <code>GET /telemetria</code>. Nenhum estado é salvo no navegador.</p>
-    <p class="footer-sub">BioSolar Citrus — V JTI · Caderno de Desafio Opção 03</p>
+    <p>Telemetria e controle transmitidos em tempo real via <code>BioSolar REST API</code>. Nenhuma persistência local.</p>
+    <p class="footer-sub">BioSolar Citrus — V JTI · Automação Hidro-Energética Industrial</p>
   </footer>
 
-  <!-- Modals -->
+  <!-- ═══════════════════════════════════════════════════════════
+       MODALS
+       ═══════════════════════════════════════════════════════════ -->
   <div id="modal-overlay" class="modal-overlay hidden"></div>
   
+  <!-- Modal Energia / Parâmetros -->
   <div id="modal-energia" class="modal glass hidden">
     <div class="modal-header">
-      <h2>Configurações de Energia</h2>
+      <h2>⚡ Configurações de Energia & Bateria</h2>
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
       <div class="input-group">
-        <label>Número de Baterias</label>
+        <label>Número de Baterias (Banco Solar)</label>
         <input type="number" id="input-baterias" min="1" value="4">
       </div>
       <div class="input-group">
-        <label>Tempo de Descarga (min)</label>
+        <label>Tempo de Descarga Estimado (min)</label>
         <input type="number" id="input-descarga" min="10" value="120">
       </div>
       <div class="input-group">
         <label>Consumo por Bomba (kW)</label>
         <input type="number" id="input-consumo" min="0.1" step="0.1" value="2.2">
       </div>
-      <button id="btn-save-energia" class="btn-primary">Salvar</button>
+      <button id="btn-save-energia" class="btn-primary">Salvar Configurações</button>
     </div>
   </div>
 
+  <!-- Modal Adicionar Talhão -->
   <div id="modal-talhao" class="modal glass hidden">
     <div class="modal-header">
-      <h2>Adicionar Novo Talhão</h2>
+      <h2>🌱 Adicionar Novo Talhão</h2>
       <button class="modal-close">&times;</button>
     </div>
     <div class="modal-body">
       <div class="input-group">
         <label>Nome do Talhão</label>
-        <input type="text" id="input-talhao-nome" placeholder="Ex: Talhão 4 - Limão">
+        <input type="text" id="input-talhao-nome" placeholder="Ex: Talhão 4 - Tangerina Ponkan">
       </div>
-      <button id="btn-save-talhao" class="btn-primary">Adicionar</button>
+      <div class="input-group">
+        <label>Imagem / Planta Satélite (Opcional)</label>
+        <input type="file" id="input-talhao-file" accept="image/*">
+        <small class="hint">Ou insira uma URL de imagem:</small>
+        <input type="url" id="input-talhao-img-url" placeholder="https://exemplo.com/satelite.jpg">
+      </div>
+      <button id="btn-save-talhao" class="btn-primary">+ Criar Talhão</button>
+    </div>
+  </div>
+
+  <!-- Modal Alterar Imagem / Planta Satélite do Talhão -->
+  <div id="modal-imagem-talhao" class="modal glass hidden">
+    <div class="modal-header">
+      <h2>🛰️ Atualizar Imagem / Planta Satélite</h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modal-img-talhao-nome" style="font-weight: 600; color: #22d3ee; margin-bottom: 12px;"></p>
+      <input type="hidden" id="modal-img-talhao-id">
+      
+      <div class="input-group">
+        <label>Selecione um arquivo de imagem do seu computador:</label>
+        <input type="file" id="input-update-file" accept="image/*">
+      </div>
+
+      <div class="input-group">
+        <label>Ou digite a URL da imagem de satélite / ortomosaico:</label>
+        <input type="url" id="input-update-url" placeholder="https://exemplo.com/mapa-satelite.png">
+      </div>
+
+      <div class="img-preview-wrap">
+        <label>Pré-visualização:</label>
+        <img id="img-preview" class="img-preview" src="talhao_1.png" alt="Pré-visualização">
+      </div>
+
+      <button id="btn-save-imagem-talhao" class="btn-primary">Salvar Nova Imagem</button>
     </div>
   </div>
 

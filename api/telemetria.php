@@ -26,12 +26,18 @@ echo json_encode([
     'bloqueio_emergencia'  => $state['bloqueio_emergencia'],
     'timestamp'            => date('c'),
     'historico'            => $state['historico'],
-    'log_eventos'          => array_slice($state['log_eventos'], 0, 20),
+    'log_eventos'          => array_slice($state['log_eventos'], 0, 30),
     'clima'                => $state['clima'],
     'energia' => [
         'consumo_atual_kw'       => round($consumo_atual_kw, 1),
         'consumo_acumulado_kwh'  => round($state['energia']['consumo_acumulado_kwh'], 2),
         'economia_estimada_pct'  => max(0, $economia_pct),
         'uptime_s'               => round($uptime_s),
+        'baterias'               => $state['energia']['baterias'] ?? 4,
+        'tempo_descarga'         => $state['energia']['tempo_descarga'] ?? 120,
+        'consumo_bomba'          => $state['energia']['consumo_bomba'] ?? POTENCIA_BOMBA_KW,
     ],
+    'retificadoras'        => $state['retificadoras'] ?? [],
+    'zabbix_problems'      => $state['zabbix_problems'] ?? [],
 ], JSON_UNESCAPED_UNICODE);
+
